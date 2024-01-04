@@ -1,0 +1,64 @@
+\documentclass[12pt,a4paper]{report}
+
+% Include necessary packages
+\usepackage{geometry} % Customize page margins and size
+\usepackage{setspace} % Adjust line spacing
+\usepackage{natbib}   % For bibliography management
+\usepackage{graphicx} % For including figures
+\usepackage{amsmath}  % For mathematical symbols and equations
+\usepackage{hyperref} % For hyperlinks within the document
+
+% Customize page margins (adjust as needed)
+\geometry{
+  top=1in,
+  bottom=1in,
+  left=1.5in,
+  right=1in,
+  headheight=14.5pt % To avoid a warning related to the header
+}
+
+% Set line spacing (adjust as needed)
+\onehalfspacing
+
+% Title page information
+\title{\textbf{Isogeometric Analysis of Thin Metal Sheets: Implementation in a MATLAB App}}
+\author{Owais Saleem}
+\date{\today}
+
+\begin{document}
+
+% Create the title page
+\maketitle
+
+% Add an abstract
+\begin{abstract}
+  Your abstract goes here.
+\end{abstract}
+
+% Table of Contents, List of Figures, and List of Tables
+\tableofcontents
+
+\listoffigures
+\listoftables
+
+% Start the main content of your thesis
+\chapter{Introduction}
+\section{History of simulations}
+\chapter{Free Form Geometries using NURBS}
+\chapter{Isogeometric Analysis}
+\chapter{Single and Multi-patch Isogeometric Analysis}
+\chapter{Trimmed geometries}
+
+
+
+% Your chapters, sections, and subsections go here...
+
+% Bibliography (use your preferred bibliography style)
+\bibliographystyle{plain}
+\bibliography{references} % Use a separate .bib file for your references
+
+% Appendices (if needed)
+\appendix
+\chapter{Additional Material}
+
+\end{document}
