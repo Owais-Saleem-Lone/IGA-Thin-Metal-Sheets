@@ -1,6 +1,7 @@
 import sys
 import json
 import numpy as np
+from scipy.io import savemat
 from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeTorus
 from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_NurbsConvert
 from OCC.Core.BRepAdaptor import BRepAdaptor_Curve
