@@ -1,64 +1,190 @@
 from OCC.Extend.DataExchange import read_iges_file
-from OCC.Extend.ShapeFactory import make_face
-from OCC.Extend.TopologyUtils import TopologyExplorer
-from OCC.Core.BRepAdaptor import BRepAdaptor_Surface,BRepAdaptor_Curve
+from OCC.Core.gp import gp_Dir,gp_Pnt2d
+from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeEdge
+from OCC.Core.Geom import Geom_BSplineCurve
+from OCC.Core.gp import gp_Pnt
 from OCC.Core.TopoDS import topods_Edge
+from OCC.Display.SimpleGui import init_display
+from OCC.Core.BRep import BRep_Tool_Curve
 from OCC.Core.TopExp import TopExp_Explorer
 from OCC.Core.TopAbs import TopAbs_EDGE
-from OCC.Core.TopLoc import TopLoc_Location
-from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeEdge
-from OCC.Core.GeomConvert import GeomConvert_CompCurveToBSplineCurve
-from OCC.Core.TopoDS import topods_Edge
-from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeWire
-from OCC.Core.GeomConvert import GeomConvert_CompCurveToBSplineCurve
-from OCC.Core.TopoDS import topods_Wire
-from OCC.Core.GeomAbs import GeomAbs_C1
-# Load the IGES file
-iges_path = "C:\\Users\\oslon\\Desktop\\MSc\\Thesis\\Code Scripts\\trimmedRect.igs"   # Replace with the path to your IGES file
-compound = read_iges_file(iges_path)
+from OCC.Core.BRepAdaptor import BRepAdaptor_Surface, BRepAdaptor_Curve
+from OCC.Core.BRepProj import BRepProj_Projection
+from OCC.Core.GeomAPI import GeomAPI_ProjectPointOnSurf
+from OCC.Core.IGESControl import IGESControl_Reader
+from OCC.Core.TopoDS import topods_Face, topods_Wire,topods_Edge, TopoDS_Compound,TopoDS_Edge,topods,topods_Face
+from OCC.Extend.TopologyUtils import TopologyExplorer
+from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_NurbsConvert,BRepBuilderAPI_MakeWire,BRepBuilderAPI_MakeEdge,BRepBuilderAPI_MakeFace
+from OCC.Core.TColgp import TColgp_HArray1OfPnt
 
-# Iterate over faces in the compound
-for face in TopologyExplorer(compound).faces():
-    # Check if the face is a trimmed surface
-    surface_adaptor = BRepAdaptor_Surface(face)
-    if surface_adaptor.GetType() == 6:  # Geom_BSplineSurface
-        print("This face represents a B-spline surface.")
+iges_file_path = "C:\\Users\\oslon\\Desktop\\MSc\\Thesis\\Code Scripts\\projectedCurveOnSurf.igs" 
+base_shape = read_iges_file(iges_file_path)
+iges_reader = IGESControl_Reader()
+iges_reader.ReadFile(iges_file_path)
+    #iges_shape = TopoDS.TopoDS_Shape()
+iges_reader.TransferRoots()
+subshape=iges_reader.Shape(1)
+nurbs_converter = BRepBuilderAPI_NurbsConvert(base_shape, True)
+basic_shape = nurbs_converter.Shape()
+expl = TopologyExplorer(basic_shape)
 
-        # Iterate over edges of the face
-        edge_explorer = TopExp_Explorer(face, TopAbs_EDGE)
-        i=1
-        wire_builder = BRepBuilderAPI_MakeWire()
-        while edge_explorer.More():
-            edge = topods_Edge(edge_explorer.Current())
-            
-            # Access the curve from the edge
-            edge_curve = BRepAdaptor_Curve(edge)
-            print("Curve Number\n",i)
-            print("Curve Degree is:", edge_curve.Degree())
-            if edge_curve.Degree()==2:
-                if i==1:
-                    wire_builder = BRepBuilderAPI_MakeWire(edge_curve)
-                else:
-                    wire_builder.Add(edge)
 
-            # Now you can work with the curve (e.g., print its type or extract more information)
-            print(f"Curve Type: {edge_curve.GetType()}")
-            
-            # Move to the next edge
-            edge_explorer.Next()
-            
-            i+=1
-        composite_wire = wire_builder.Wire()
+for curve in expl.edges():
+    surf = BRepAdaptor_Curve(curve)
+    bcurve = surf.BSpline()
+    print(bcurve.FirstParameter())
+    print(bcurve.LastParameter())
+    
+    # Assuming the circular hole has a specific radius (adjust as needed)
+    if bcurve.Degree()==2:
+        curve_edge = bcurve
+        break
 
-        bspline_curve_converter = GeomConvert_CompCurveToBSplineCurve(composite_wire)
-        nurbs_curve = bspline_curve_converter.Curve()
+if curve_edge:
+    edge_builder = BRepBuilderAPI_MakeEdge(curve_edge)
+    edge_builder=edge_builder.Edge()
+    wire_builder = BRepBuilderAPI_MakeWire()
+    wire_builder.Add(edge_builder)
+    curve_wire = wire_builder.Wire()
 
-        # Convert the composite curve to a B-spline curve
-        bspline_curve_converter = GeomConvert_CompCurveToBSplineCurve(composite_wire, GeomAbs_C1)
-        nurbs_curve = bspline_curve_converter.Curve()
+    for face in expl.faces():
+        curve_proj = BRepProj_Projection(curve_wire, face,gp_Dir(0, 0, 1))
+        #curve_proj = BRepProj_Projection(curve_wire, face,gp_Dir(0, 0, 1)).Current()
+        curve_proj=curve_proj.Shape()
+        print(curve_proj.NbChildren())
         
-    else:
-        print("This face does not represent a B-spline surface.")
+
+    nurbs_converter = BRepBuilderAPI_NurbsConvert(curve_proj, True)
+    converted_shape = nurbs_converter.Shape()
+    expl = TopologyExplorer(converted_shape)
+    curve_final= expl.edges()
+    for adaptor_curve in curve_final:
+        
+        bcurve = BRepAdaptor_Curve(adaptor_curve)
+        bcurve = bcurve.BSpline()
+        num_control_points = bcurve.NbPoles()
+        control_points = TColgp_HArray1OfPnt(1, num_control_points)
+        bcurve.Poles(control_points)
+
+        # LET US DO MAPPING POINTWISE 
+        # surface_adaptor = BRepAdaptor_Surface(topods.Face(face))
+        # for point in control_points:
+            
+        #     point_to_project = gp_Pnt(point.X(), point.Y(), point.Z())
+        #     bSurf=surface_adaptor.Surface()
+        #     projector = GeomAPI_ProjectPointOnSurf(point_to_project, surface_adaptor.Surface())
+        #     projector.Perform()
+        #     u, v = projector.LowerDistanceParameters()
+
+    for point in control_points:
+        print(point.X(), point.Y(), point.Z())
+
+    display, start_display, add_menu, add_function_to_menu = init_display()
+    for point in control_points:
+        display.DisplayShape(gp_Pnt(point.X(), point.Y(), point.Z()), color='green', update=True)
+
+    #display.DisplayShape(basic_shape, update=True)
+    display.DisplayShape(curve_proj, color='red', update=True)
+
+
+    start_display()
+    
+   
+else:
+    print("Circular hole not found on the surface.")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# This Code gets curves from trimmed rect surf including circle
+
+# from OCC.Extend.DataExchange import read_iges_file
+# from OCC.Extend.ShapeFactory import make_face
+# from OCC.Extend.TopologyUtils import TopologyExplorer
+# from OCC.Core.BRepAdaptor import BRepAdaptor_Surface,BRepAdaptor_Curve
+# from OCC.Core.TopoDS import topods_Edge,TopoDS_Edge
+# from OCC.Core.TopExp import TopExp_Explorer
+# from OCC.Core.TopAbs import TopAbs_EDGE
+# from OCC.Core.TopLoc import TopLoc_Location
+# from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeEdge
+# from OCC.Core.GeomConvert import GeomConvert_CompCurveToBSplineCurve
+# from OCC.Core.TopoDS import topods_Edge
+# from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeWire
+# from OCC.Core.GeomConvert import GeomConvert_CompCurveToBSplineCurve
+# from OCC.Core.TopoDS import topods_Wire,topods
+# from OCC.Core.GeomAbs import GeomAbs_C1
+# # Load the IGES file
+# iges_path = "C:\\Users\\oslon\\Desktop\\MSc\\Thesis\\Code Scripts\\trimmedRect.igs"   # Replace with the path to your IGES file
+# compound = read_iges_file(iges_path)
+
+# # Iterate over faces in the compound
+# for face in TopologyExplorer(compound).faces():
+#     # Check if the face is a trimmed surface
+#     surface_adaptor = BRepAdaptor_Surface(face)
+#     if surface_adaptor.GetType() == 6:  # Geom_BSplineSurface
+#         print("This face represents a B-spline surface.")
+
+#         # Iterate over edges of the face
+#         edge_explorer = TopExp_Explorer(face, TopAbs_EDGE)
+#         i=1
+#         wire_builder = BRepBuilderAPI_MakeWire()
+#         while edge_explorer.More():
+#             edge = topods.Edge(edge_explorer.Current())
+#             # Access the curve from the edge
+#             edge_curve = BRepAdaptor_Curve(edge)
+#             print("Curve Number\n",i)
+#             print("Curve Degree is:", edge_curve.Degree())
+#             if edge_curve.Degree()==2:
+#                 if i==5:
+#                     print("in first segment of circle")
+#                     edge_curve.TopoDS_Edge()
+#                     wire_builder = BRepBuilderAPI_MakeWire(edge_curve)
+#                 else:
+#                     print("in second segment of circle")
+#                     wire_builder.Add(edge_curve)
+#             # Move to the next edge
+#             edge_explorer.Next()
+            
+#             i+=1
+#         composite_wire = wire_builder.Wire()
+
+#         bspline_curve_converter = GeomConvert_CompCurveToBSplineCurve(composite_wire)
+#         nurbs_curve = bspline_curve_converter.Curve()
+
+#         # Convert the composite curve to a B-spline curve
+#         bspline_curve_converter = GeomConvert_CompCurveToBSplineCurve(composite_wire, GeomAbs_C1)
+#         nurbs_curve = bspline_curve_converter.Curve()
+        
+#     else:
+#         print("This face does not represent a B-spline surface.")
 
 
 

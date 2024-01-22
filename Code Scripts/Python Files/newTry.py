@@ -15,7 +15,7 @@ from mpl_toolkits.mplot3d import Axes3D
 from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeEdge, BRepBuilderAPI_MakeWire, BRepBuilderAPI_MakeFace,BRepBuilderAPI_MakeVertex
 
 # Load the IGES file
-iges_file_path = "C:\\Users\\oslon\\Desktop\\MSc\\Thesis\\Code Scripts\\trimmedRect.igs" # Replace with your IGES file path
+iges_file_path = "C:\\Users\\oslon\\Desktop\\MSc\\Thesis\\Code Scripts\\trimmedRect.igs" 
 iges_reader = IGESControl_Reader()
 status = iges_reader.ReadFile(iges_file_path)
 

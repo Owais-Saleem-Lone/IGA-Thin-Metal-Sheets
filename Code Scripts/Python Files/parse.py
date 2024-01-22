@@ -20,7 +20,7 @@ def getNURBS(iges_file_path):
     base_shape = read_iges_file(iges_file_path)
     iges_reader = IGESControl_Reader()
     iges_reader.ReadFile(iges_file_path)
-    iges_shape = TopoDS.TopoDS_Shape()
+    #iges_shape = TopoDS.TopoDS_Shape()
     iges_reader.TransferRoots()
     subshape=iges_reader.Shape(1)
     nurbs_converter = BRepBuilderAPI_NurbsConvert(base_shape, True)
@@ -84,13 +84,9 @@ def getNURBS(iges_file_path):
                 raise AssertionError("the face was not converted to a GeomAbs_BSplineSurface")
             
             bsrf = surf.BSpline()
-            udegree=[]
             UCurveDegree = bsrf.UDegree()
-            
             VCurveDegree = bsrf.VDegree()
-
             
-            degree= np.array([UCurveDegree, UCurveDegree])
             uknots = bsrf.UKnots()
             UknotArr=[]
             for i in range(bsrf.NbUKnots()):
