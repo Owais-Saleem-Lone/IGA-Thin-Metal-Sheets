@@ -9,7 +9,7 @@ from OCC.Core.GeomAbs import GeomAbs_BSplineSurface
 from OCC.Core.GeomAbs import GeomAbs_BSplineCurve
 from OCC.Core import TopoDS
 from OCC.Core import TopAbs
-iges_file_path = "C:\\Users\\oslon\\Desktop\\MSc\\plate.igs"
+iges_file_path = "C:\\Users\\oslon\\Desktop\\MSc\\Thesis\\Code Scripts\\beam.igs"
 base_shape = read_iges_file(iges_file_path)
 # conversion to a nurbs representation
 
@@ -70,3 +70,9 @@ for face in expl.edges():
                 print(p.X(), p.Y(), p.Z(), end=" ")
     print()
     fc_idx += 1
+    num_points = 100
+    points_on_curve = [bcurve.Value(i / (num_points - 1)) for i in range(num_points)]
+
+    # Display the points
+    for point in points_on_curve:
+        print(point.Coord())

@@ -1,0 +1,160 @@
+from OCC.Core.BRep import BRep_Tool
+from OCC.Core.BRepAdaptor import BRepAdaptor_CompCurve
+from OCC.Core.Geom import Geom_BSplineCurve,Geom_BSplineSurface
+from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeEdge, BRepBuilderAPI_MakeWire
+from OCC.Core.Geom2dConvert import geom2dconvert  
+from OCC.Core.TColgp import TColgp_Array1OfPnt2d
+from OCC.Core.TColStd import TColStd_Array1OfInteger, TColStd_Array1OfReal
+from OCC.Core.TopExp import TopExp_Explorer  
+from OCC.Core.TopAbs import TopAbs_EDGE,TopAbs_WIRE,TopAbs_FACE
+from OCC.Core.TopoDS import topods
+from OCC.Core.ShapeAnalysis import shapeanalysis
+from OCC.Extend.DataExchange import read_iges_file
+from OCC.Display.SimpleGui import init_display
+import numpy as np
+def getWireData(_OCC_outerWire, _OCC_wire):
+  """
+  Receives a TopoDS_SHAPE class with a Wire type and converts its data to python type
+  \param[in] _OCC_wire	class: TopoDS_SHAPE	type: Wire
+  \return inner
+  \return noTrCurves
+  """
+  # Determine inner or outer boundary loop
+  if _OCC_wire.IsEqual(_OCC_outerWire):
+    inner = False
+  else:
+    inner = True
+  
+  # Count number of trimming curves in the loop
+  noTrCurves = 0  
+  edgeExplorer = TopExp_Explorer(_OCC_wire, TopAbs_EDGE)
+  while edgeExplorer.More():
+    noTrCurves += 1
+    edgeExplorer.Next()
+  
+  return inner, noTrCurves
+
+
+def getOuterWire(_OCC_face):
+  """
+  \param[in] _OCC_face	class: TopoDS_SHAPE	type: Face
+  \return OCC_outerWire
+  """
+  
+  OCC_outerWire = shapeanalysis.OuterWire(topods.Face(_OCC_face))
+
+  return OCC_outerWire
+
+def getEdgeDataWithOrientation(_OCC_edge, _OCC_wire, _OCC_face):
+  """
+  \param[in] _OCC_edge	class: TopoDS_SHAPE	type: Edge
+  \param[in] _OCC_wire	class: TopoDS_SHAPE	type: Wire
+  \param[in] _OCC_face	class: TopoDS_SHAPE	type: Face
+  \return direction
+  \return pDegree
+  \return uKnotVector
+  \return uNoCPs
+  \return CPNet
+  """
+  # Convert a topological TopoDS_EDGE into Geom2d_BSplineCurve
+  OCC_handle_curve2d, activeRangeBegin, activeRangeEnd = BRep_Tool.CurveOnSurface(topods.Edge(_OCC_edge), topods.Face(_OCC_face))
+  OCC_bsplineCurve2d = geom2dconvert.CurveToBSplineCurve(OCC_handle_curve2d)#.GetObject()
+  
+  if OCC_bsplineCurve2d.IsPeriodic(): 
+    print("Found periodic curve!")
+    OCC_bsplineCurve2d.SetNotPeriodic()
+  # Curve direction 
+  direction = (_OCC_wire.Orientation() + _OCC_edge.Orientation() + 1)%2
+  # pDegree
+  pDegree = OCC_bsplineCurve2d.Degree()
+  # No of Knots
+  OCC_uNoKnots = OCC_bsplineCurve2d.NbKnots()
+  # Knot vector
+  OCC_uKnotMulti = TColStd_Array1OfInteger(1,OCC_uNoKnots)
+  OCC_bsplineCurve2d.Multiplicities(OCC_uKnotMulti)
+  uNoKnots = 0
+  for ctr in range(1,OCC_uNoKnots+1): uNoKnots += OCC_uKnotMulti.Value(ctr)
+  OCC_uKnotSequence = TColStd_Array1OfReal(1,uNoKnots)
+  OCC_bsplineCurve2d.KnotSequence(OCC_uKnotSequence)
+  uKnotVector = []
+  for iKnot in range(1,uNoKnots+1): uKnotVector.append(OCC_uKnotSequence.Value(iKnot))
+  # No of CPs
+  uNoCPs = OCC_bsplineCurve2d.NbPoles()
+  # CPs
+  OCC_CPnet = TColgp_Array1OfPnt2d(1,uNoCPs)
+  OCC_bsplineCurve2d.Poles(OCC_CPnet)
+  # CP weights
+  OCC_CPweightNet = TColStd_Array1OfReal(1,uNoCPs)
+  OCC_bsplineCurve2d.Weights(OCC_CPweightNet)
+  CPNet = []
+  for iCP in range(1,uNoCPs+1):
+    OCC_CP = OCC_CPnet.Value(iCP)
+    OCC_CPweight = OCC_CPweightNet.Value(iCP)
+    CPNet.extend([OCC_CP.X(), OCC_CP.Y(), 0.0, OCC_CPweight])
+    
+  # Create a linear space with 25 points
+  start_value = uKnotVector[0]
+  end_value = uKnotVector[-1] 
+  num_points = 25
+  linear_space = np.linspace(start_value, end_value, num_points)
+  num_points = 25
+  points_on_curve = [OCC_bsplineCurve2d.Value(i) for i in linear_space ]
+  x_coordinates=[]
+  y_coordinates=[]
+  for point in points_on_curve:
+    x_coordinates.append(point.X())
+    y_coordinates.append(point.Y()) 
+  return x_coordinates,y_coordinates
+
+
+
+## MAIN CODE STARTS HERE
+iges_file_path = "C:\\Users\\oslon\\Desktop\\MSc\\Thesis\\Code Scripts\\trimmedRect.igs" 
+_OCC_nurbsShape = read_iges_file(iges_file_path)
+print(_OCC_nurbsShape.ShapeType())
+
+# Face explorer to gather the geometrical information
+
+faceExplorer = TopExp_Explorer(_OCC_nurbsShape, TopAbs_FACE)
+while faceExplorer.More():
+  currentFace = faceExplorer.Current()
+  faceExplorer.Next()
+
+  ## Gather patch trimming loop info
+  # Get outer wire
+  OCC_outerWire = getOuterWire(currentFace)
+  
+  
+  faceWireExplorer = TopExp_Explorer(currentFace, TopAbs_WIRE) # This will explore outer and inner wires
+  
+  while faceWireExplorer.More():        # Loop through all wires (outer and inner)
+    
+    currentFaceWire = faceWireExplorer.Current()
+    faceWireExplorer.Next()
+
+    # Collect wire data
+    inner, noTrCurves = getWireData(OCC_outerWire, currentFaceWire)   # check if the wire is exterior or interior
+    #note: get wire data takes a wire and checks if it is exterior or interior. noTrCurves returns number...  
+    # of edges in that wire (external or internal) 
+ 
+    faceWireEdgeExplorer = TopExp_Explorer(currentFaceWire, TopAbs_EDGE)
+    
+    par_range=[]
+    X_trim_vec=[]
+    Y_trim_vec=[]
+    if inner:           # For only interior trimming wire which is one in my case of circular trimming curve
+      
+      while faceWireEdgeExplorer.More():        # Checking the edges in the wire, 4 in my case
+        currentFaceWireEdge = faceWireEdgeExplorer.Current()
+        faceWireEdgeExplorer.Next()
+        x,y = getEdgeDataWithOrientation(currentFaceWireEdge, currentFaceWire, currentFace)
+        X_trim_vec.extend(x)
+        Y_trim_vec.extend(y)
+        
+        
+    #print(X_trim_vec)
+        
+      
+ 
+    
+  

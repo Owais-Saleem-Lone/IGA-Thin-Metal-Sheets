@@ -1,20 +1,18 @@
 from OCC.Extend.DataExchange import read_iges_file
-from OCC.Core.gp import gp_Dir,gp_Pnt2d
-from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeEdge
+from OCC.Core.gp import gp_Dir,gp_Pnt2d,gp_Pnt
 from OCC.Core.Geom import Geom_BSplineCurve
-from OCC.Core.gp import gp_Pnt
-from OCC.Core.TopoDS import topods_Edge
 from OCC.Display.SimpleGui import init_display
-from OCC.Core.BRep import BRep_Tool_Curve
+from OCC.Core.BRep import BRep_Tool
 from OCC.Core.TopExp import TopExp_Explorer
 from OCC.Core.TopAbs import TopAbs_EDGE
 from OCC.Core.BRepAdaptor import BRepAdaptor_Surface, BRepAdaptor_Curve
 from OCC.Core.BRepProj import BRepProj_Projection
 from OCC.Core.GeomAPI import GeomAPI_ProjectPointOnSurf
 from OCC.Core.IGESControl import IGESControl_Reader
-from OCC.Core.TopoDS import topods_Face, topods_Wire,topods_Edge, TopoDS_Compound,TopoDS_Edge,topods,topods_Face
+from OCC.Core.TopoDS import  TopoDS_Compound,TopoDS_Edge,topods,TopoDS_Face,TopoDS_Vertex
 from OCC.Extend.TopologyUtils import TopologyExplorer
-from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_NurbsConvert,BRepBuilderAPI_MakeWire,BRepBuilderAPI_MakeEdge,BRepBuilderAPI_MakeFace
+from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_NurbsConvert,BRepBuilderAPI_MakeWire
+from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_MakeEdge2d,BRepBuilderAPI_MakeFace,BRepBuilderAPI_MakeVertex,BRepBuilderAPI_MakeEdge
 from OCC.Core.TColgp import TColgp_HArray1OfPnt
 
 iges_file_path = "C:\\Users\\oslon\\Desktop\\MSc\\Thesis\\Code Scripts\\projectedCurveOnSurf.igs" 
@@ -27,13 +25,13 @@ subshape=iges_reader.Shape(1)
 nurbs_converter = BRepBuilderAPI_NurbsConvert(base_shape, True)
 basic_shape = nurbs_converter.Shape()
 expl = TopologyExplorer(basic_shape)
-
+one_face=TopoDS_Face
 
 for curve in expl.edges():
     surf = BRepAdaptor_Curve(curve)
     bcurve = surf.BSpline()
-    print(bcurve.FirstParameter())
-    print(bcurve.LastParameter())
+    #print(bcurve.FirstParameter())
+    #print(bcurve.LastParameter())
     
     # Assuming the circular hole has a specific radius (adjust as needed)
     if bcurve.Degree()==2:
@@ -41,17 +39,18 @@ for curve in expl.edges():
         break
 
 if curve_edge:
-    edge_builder = BRepBuilderAPI_MakeEdge(curve_edge)
+    edge_builder =BRepBuilderAPI_MakeEdge(curve_edge)
     edge_builder=edge_builder.Edge()
     wire_builder = BRepBuilderAPI_MakeWire()
     wire_builder.Add(edge_builder)
     curve_wire = wire_builder.Wire()
 
     for face in expl.faces():
+        one_face=face
         curve_proj = BRepProj_Projection(curve_wire, face,gp_Dir(0, 0, 1))
         #curve_proj = BRepProj_Projection(curve_wire, face,gp_Dir(0, 0, 1)).Current()
         curve_proj=curve_proj.Shape()
-        print(curve_proj.NbChildren())
+        #print(curve_proj.NbChildren())
         
 
     nurbs_converter = BRepBuilderAPI_NurbsConvert(curve_proj, True)
@@ -65,25 +64,25 @@ if curve_edge:
         num_control_points = bcurve.NbPoles()
         control_points = TColgp_HArray1OfPnt(1, num_control_points)
         bcurve.Poles(control_points)
-
-        # LET US DO MAPPING POINTWISE 
-        # surface_adaptor = BRepAdaptor_Surface(topods.Face(face))
-        # for point in control_points:
-            
-        #     point_to_project = gp_Pnt(point.X(), point.Y(), point.Z())
-        #     bSurf=surface_adaptor.Surface()
-        #     projector = GeomAPI_ProjectPointOnSurf(point_to_project, surface_adaptor.Surface())
-        #     projector.Perform()
-        #     u, v = projector.LowerDistanceParameters()
-
+    
+    
+    #surface = BRep_Tool.Surface(topods_Face(one_face))
+    
     for point in control_points:
-        print(point.X(), point.Y(), point.Z())
+        print(point.X(), point.Y(), point.Z(),"\n")
+        #vertex_builder = BRepBuilderAPI_MakeVertex(gp_Pnt(point.X(), point.Y(), point.Z()))
+        #vertex = vertex_builder.Vertex()
+        #valu = BRep_Tool.Parameters(vertex,one_face)
+
+        #print(f"The (u, v) coordinates of the point are: ({u}, {v})")
+
+        
 
     display, start_display, add_menu, add_function_to_menu = init_display()
     for point in control_points:
         display.DisplayShape(gp_Pnt(point.X(), point.Y(), point.Z()), color='green', update=True)
 
-    #display.DisplayShape(basic_shape, update=True)
+    display.DisplayShape(basic_shape, update=True)
     display.DisplayShape(curve_proj, color='red', update=True)
 
 
