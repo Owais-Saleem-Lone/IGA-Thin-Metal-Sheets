@@ -1,5 +1,4 @@
 import sys
-import json
 from scipy.io import savemat
 import numpy as np
 from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeTorus
@@ -123,6 +122,7 @@ def getNURBS(iges_file_path):
     iges_reader = IGESControl_Reader()
     iges_reader.ReadFile(iges_file_path)
     iges_reader.TransferRoots()
+    num_shapes=iges_reader.NbShapes()
     subshape=iges_reader.Shape(1)
     
     nurbs_converter = BRepBuilderAPI_NurbsConvert(base_shape, True)
@@ -137,10 +137,10 @@ def getNURBS(iges_file_path):
         print('Please input a valid curve or surface')
 
     if geo_dim==1:
-        
-        fc_idx = 1
+        dict_list=[]
+        crv_idx = 1
         for curve in expl.edges():
-            print("=== Curve %i ===" % fc_idx)
+            print("=== Curve %i ===" % crv_idx)
             surf = BRepAdaptor_Curve(curve)
             surf_type = surf.GetType()
             if not surf_type == GeomAbs_BSplineCurve:
@@ -168,15 +168,20 @@ def getNURBS(iges_file_path):
                 for i in range(bcurve.NbPoles()):
                         p = poles.Value(i + 1)
                         controlPointMatrix[i]= np.array([p.X(),p.Y(),p.Z()])
-            fc_idx += 1
-            my_dict = {'dimension': geo_dim, 'polDegree': curve_Degree,'knotVector':knotArray,
+            crv_idx += 1
+            my_dict = {'polDegree': curve_Degree,'knotVector':knotArray,
                        'weights':weightArray,'controlPoints':controlPointMatrix.T}
-            savemat(output_file, my_dict)
-            return  output_file
+            dict_list.append(my_dict)  
+            
+        data_to_save = {'dict_list': dict_list, 'dimension': geo_dim}
+        savemat(output_file, data_to_save)
+        print(f'All {num_shapes} dictionaries saved as {output_file}')
+        return  output_file
         
     elif geo_dim==2:
         
         fc_idx = 1
+        dict_list=[]
         for face in expl.faces():
             print("=== Face %i ===" % fc_idx)
             surf = BRepAdaptor_Surface(face, True)
@@ -266,17 +271,19 @@ def getNURBS(iges_file_path):
                         X_trim_vec.extend(x)
                         Y_trim_vec.extend(y)
                     
-                    my_dict = {'isTrim':1,'dimension': geo_dim, 'uDeg': UCurveDegree,'vDeg': VCurveDegree,'uknotVector':UknotArr,
+                    my_dict = {'isTrim':1, 'uDeg': UCurveDegree,'vDeg': VCurveDegree,'uknotVector':UknotArr,
                        'vknotVector':VknotArr,'weights':weightArray,'controlPoints':conPointMtx.T,'TrimPolygon':[X_trim_vec,Y_trim_vec]}
                     
                 else:
-                    my_dict = {'isTrim':0,'dimension': geo_dim, 'uDeg': UCurveDegree,'vDeg': VCurveDegree,'uknotVector':UknotArr,
-                       'vknotVector':VknotArr,'weights':weightArray,'controlPoints':conPointMtx.T}
-                    
+                    my_dict = {'isTrim':0, 'uDeg': UCurveDegree,'vDeg': VCurveDegree,'uknotVector':UknotArr,
+                     'vknotVector':VknotArr,'weights':weightArray,'controlPoints':conPointMtx.T}
+                
             fc_idx += 1
-                   
-            savemat(output_file, my_dict)
-            return  output_file
+            dict_list.append(my_dict)  
+            
+        data_to_save = {'dict_list': dict_list, 'dimension': geo_dim}
+        savemat(output_file, data_to_save)
+        print(f'All {num_shapes} dictionaries saved as {output_file}')
 
     else:
         raise AssertionError("The geometry is neither a curve not a surface")

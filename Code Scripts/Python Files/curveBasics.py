@@ -9,7 +9,7 @@ from OCC.Core.GeomAbs import GeomAbs_BSplineSurface
 from OCC.Core.GeomAbs import GeomAbs_BSplineCurve
 from OCC.Core import TopoDS
 from OCC.Core import TopAbs
-iges_file_path = "C:\\Users\\oslon\\Desktop\\MSc\\Thesis\\Code Scripts\\beam.igs"
+iges_file_path = "C:\\Users\\oslon\\Desktop\\MSc\\Thesis\\Code Scripts\\multi-patch plate.igs"
 base_shape = read_iges_file(iges_file_path)
 # conversion to a nurbs representation
 
@@ -19,6 +19,7 @@ iges_reader = IGESControl_Reader()
 iges_reader.ReadFile(iges_file_path)
 iges_shape = TopoDS.TopoDS_Shape()
 iges_reader.TransferRoots()
+print("Number of faces in the file are : ",iges_reader.NbShapes())
 subshape=iges_reader.Shape(1)
 # TRIAL TRIAL TRIAL
 
@@ -29,7 +30,7 @@ print("Trying to get the type of curve",subshape.ShapeType()==TopAbs.TopAbs_EDGE
 print("Trying to get the type of plate",subshape.ShapeType()==TopAbs.TopAbs_FACE)
 
 
-
+exit()
 expl = TopologyExplorer(converted_shape)
 
 # loop over faces
