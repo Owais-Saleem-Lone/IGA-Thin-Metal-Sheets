@@ -1,7 +1,6 @@
 import sys
 from scipy.io import savemat
 import numpy as np
-from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeTorus
 from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_NurbsConvert,BRepBuilderAPI_MakeEdge, BRepBuilderAPI_MakeWire
 from OCC.Core.BRepAdaptor import BRepAdaptor_Curve,BRepAdaptor_Surface,BRepAdaptor_CompCurve
 from OCC.Core.IGESControl import IGESControl_Reader
@@ -58,16 +57,6 @@ def getOuterWire(_OCC_face):
   return OCC_outerWire
 
 def getEdgeDataWithOrientation(_OCC_edge, _OCC_wire, _OCC_face):
-  """
-  \param[in] _OCC_edge	class: TopoDS_SHAPE	type: Edge
-  \param[in] _OCC_wire	class: TopoDS_SHAPE	type: Wire
-  \param[in] _OCC_face	class: TopoDS_SHAPE	type: Face
-  \return direction
-  \return pDegree
-  \return uKnotVector
-  \return uNoCPs
-  \return CPNet
-  """
   # Convert a topological TopoDS_EDGE into Geom2d_BSplineCurve
   OCC_handle_curve2d, activeRangeBegin, activeRangeEnd = BRep_Tool.CurveOnSurface(topods.Edge(_OCC_edge), topods.Face(_OCC_face))
   OCC_bsplineCurve2d = geom2dconvert.CurveToBSplineCurve(OCC_handle_curve2d)#.GetObject()
@@ -264,9 +253,6 @@ def getNURBS(iges_file_path):
                     while faceWireEdgeExplorer.More():        # Checking the edges in the wire, 4 in my case
                         currentFaceWireEdge = faceWireEdgeExplorer.Current()
                         faceWireEdgeExplorer.Next()
-                        # Collect trimming curve data
-                        #direction, Degree, KnotVector, NoCP, CPNet, activeRangeBegin, activeRangeEnd = \
-                        #getEdgeDataWithOrientation(currentFaceWireEdge, currentFaceWire, currentFace)
                         x,y = getEdgeDataWithOrientation(currentFaceWireEdge, currentFaceWire, face)
                         X_trim_vec.extend(x)
                         Y_trim_vec.extend(y)

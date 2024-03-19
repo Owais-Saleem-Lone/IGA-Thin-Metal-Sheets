@@ -1,6 +1,5 @@
 from OCC.Display.SimpleGui import *
 from OCC.Display.backend import *
-from OCC.Core.BRepPrimAPI import BRepPrimAPI_MakeBox
 from OCC.Extend.TopologyUtils import TopologyExplorer
 from OCC.Core.IGESControl import IGESControl_Reader
 from OCC.Core import TopoDS,TopAbs
@@ -9,6 +8,7 @@ from OCC.Extend.DataExchange import read_iges_file
 from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_NurbsConvert
 import numpy as np
 import sys
+
 def load_iges(display, iges_file_path):
     # Initialize the IGES reader
     base_shape = read_iges_file(iges_file_path)
