@@ -360,16 +360,16 @@ if __name__ == '__main__':
     global selected_edges, selected_faces,iges_file_path
     selected_edges=[]
     selected_faces=[]
-    iges_file_path="C:\\Users\\oslon\\Desktop\\MSc\\Thesis\\Code Scripts\\multi-patch plate.igs"
-    #iges_file_path = sys.argv[1]
+    #iges_file_path="C:\\Users\\oslon\\Desktop\\MSc\\Thesis\\Code Scripts\\multi-patch plate.igs"
+    iges_file_path = sys.argv[1]
     global num_xiKnots, num_etaKnots
     global matrix_dict,output_file,operation 
     output_file= 'coup.mat'
     #operation= sys.argv[2]
-    #num_xiKnots=int(sys.argv[3])
-    #num_etaKnots=int(sys.argv[4])
-    num_xiKnots=5
-    num_etaKnots=5
+    num_xiKnots=int(sys.argv[3])
+    num_etaKnots=int(sys.argv[4])
+    #num_xiKnots=5
+    #num_etaKnots=5
     print(f"xi refinement points are: {num_xiKnots}")
     print(f"eta refinement points are <with increment of course>: {num_etaKnots}")
     load_iges(display, iges_file_path)
