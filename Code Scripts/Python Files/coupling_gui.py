@@ -213,6 +213,53 @@ def crv_to_srf(crv_pts,edge ,face):
   print(xi_values,"\n")
   return eta_values,xi_values  
   
+def nurbs_detail_coupling_curve(crv,surf):
+  OCC_handle_curve2d, activeRangeBegin, activeRangeEnd = BRep_Tool.CurveOnSurface(topods.Edge(crv), topods.Face(surf))
+  OCC_bsplineCurve2d = geom2dconvert.CurveToBSplineCurve(OCC_handle_curve2d)
+  
+  if OCC_bsplineCurve2d.IsPeriodic(): 
+    print("Found periodic curve!")
+    OCC_bsplineCurve2d.SetNotPeriodic()
+  # pDegree
+  pDegree = OCC_bsplineCurve2d.Degree()
+  # Knots
+  user_refinement=8
+  refined_values = np.round(np.linspace(OCC_bsplineCurve2d.FirstParameter(), OCC_bsplineCurve2d.LastParameter(), user_refinement)[1:-1])
+  knot_insertion = TColStd_Array1OfReal(1, len(refined_values))
+  knot_insertion_mult = TColStd_Array1OfInteger(1, len(refined_values))
+  for i, value in enumerate(refined_values):
+    knot_insertion.SetValue(i + 1, value)
+    knot_insertion_mult.SetValue(i + 1, 1)
+  OCC_bsplineCurve2d.InsertKnots(knot_insertion,knot_insertion_mult)
+    
+  OCC_uNoKnots = OCC_bsplineCurve2d.NbKnots()
+  # Knot vector
+  OCC_uKnotMulti = TColStd_Array1OfInteger(1,OCC_uNoKnots)
+  OCC_bsplineCurve2d.Multiplicities(OCC_uKnotMulti)
+  uNoKnots = 0
+  for ctr in range(1,OCC_uNoKnots+1): uNoKnots += OCC_uKnotMulti.Value(ctr)
+  OCC_uKnotSequence = TColStd_Array1OfReal(1,uNoKnots)
+  OCC_bsplineCurve2d.KnotSequence(OCC_uKnotSequence)
+  uKnotVector = []
+  for iKnot in range(1,uNoKnots+1): uKnotVector.append(OCC_uKnotSequence.Value(iKnot))
+  
+  
+  
+  # No of CPs
+  uNoCPs = OCC_bsplineCurve2d.NbPoles()
+  # CPs
+  OCC_CPnet = TColgp_Array1OfPnt2d(1,uNoCPs)
+  OCC_bsplineCurve2d.Poles(OCC_CPnet)
+  # CP weights
+  OCC_CPweightNet = TColStd_Array1OfReal(1,uNoCPs)
+  OCC_bsplineCurve2d.Weights(OCC_CPweightNet)
+  CPNet = []
+  for iCP in range(1,uNoCPs+1):
+    OCC_CP = OCC_CPnet.Value(iCP)
+    OCC_CPweight = OCC_CPweightNet.Value(iCP)
+    CPNet.extend([OCC_CP.Y(), OCC_CP.X(), 0.0, OCC_CPweight])
+  return pDegree,uKnotVector,CPNet
+
 def process_intersection(display):
   global matrix_dict
   crv_pts1=ed_fc_inter(selected_edges[0],selected_faces[0])
@@ -224,9 +271,10 @@ def process_intersection(display):
   x_inter,y_inter,z_inter= surf_to_phy(xi_values,eta_values,selected_faces[0])
   xi_other,eta_other = phy_to_surf(x_inter,y_inter,z_inter,selected_faces[1])
   ref_crv_pts2= surf_to_curve(xi_other,eta_other,selected_edges[1],selected_faces[1])
-
+  crv_deg,crv_knt_vec,crv_CPs= nurbs_detail_coupling_curve(selected_edges[0],selected_faces[0])
   
-  matrix_dict = {'cur_pts_1': ref_crv_pts1, 'xi_vls_1': xi_values, 'eta_vls_1': eta_values,'cur_pts_2': ref_crv_pts2, 'xi_vls_2': xi_other, 'eta_vls_2': eta_other}
+  matrix_dict = {'cur_pts_1': ref_crv_pts1, 'xi_vls_1': xi_values, 'eta_vls_1': eta_values,'cur_pts_2': ref_crv_pts2, 'xi_vls_2': xi_other, 'eta_vls_2': eta_other
+                 ,'curve_deg':crv_deg,'crv_knotVct':crv_knt_vec,'crv_cps':crv_CPs}
   for key, value in matrix_dict.items():
     print(f"{key}: {value}")
       
@@ -244,14 +292,14 @@ if __name__ == '__main__':
     global selected_edges, selected_faces,iges_file_path
     selected_edges=[]
     selected_faces=[]
-    #iges_file_path="C:\\Users\\oslon\\Desktop\\MSc\\Thesis\\Code Scripts\\multi-patch plate.igs"
-    iges_file_path = sys.argv[1]
+    iges_file_path="C:\\Users\\oslon\\Desktop\\MSc\\Thesis\\Code Scripts\\multi-patch plate.igs"
+    #iges_file_path = sys.argv[1]
     global num_xiKnots, num_etaKnots
     global matrix_dict,output_file,operation 
     output_file= 'b_rep.mat'
     #operation= sys.argv[2]
-    num_xiKnots=int(sys.argv[3])
-    num_etaKnots=int(sys.argv[4])
+   #num_xiKnots=int(sys.argv[3])
+   #num_etaKnots=int(sys.argv[4])
     num_xiKnots=5
     num_etaKnots=5
     print(f"xi refinement points are: {num_xiKnots}")

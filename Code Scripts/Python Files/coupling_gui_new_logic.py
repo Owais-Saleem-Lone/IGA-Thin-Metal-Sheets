@@ -7,8 +7,7 @@ from OCC.Core.BRepAdaptor import BRepAdaptor_Curve,BRepAdaptor_Surface,BRepAdapt
 from OCC.Core.IGESControl import IGESControl_Reader
 from OCC.Extend.DataExchange import read_iges_file
 from OCC.Extend.TopologyUtils import TopologyExplorer
-from OCC.Core.GeomAbs import GeomAbs_BSplineSurface
-from OCC.Core.GeomAbs import GeomAbs_BSplineCurve
+from OCC.Core.GeomAbs import GeomAbs_BSplineCurve,GeomAbs_BSplineSurface
 from OCC.Core.BRep import BRep_Tool
 from OCC.Core.Geom import Geom_BSplineCurve,Geom_BSplineSurface
 from OCC.Core.Geom2dConvert import geom2dconvert  
@@ -23,8 +22,9 @@ from OCC.Display.SimpleGui import *
 from OCC.Display.backend import *
 from OCC.Core import TopoDS,TopAbs
 from OCC.Core.Geom2dAPI import Geom2dAPI_ProjectPointOnCurve
+from OCC.Core.GeomAPI import GeomAPI_ProjectPointOnSurf
+from OCC.Core.Extrema import Extrema_ExtAlgo
 import time
-
 
 
 def load_iges(display, iges_file_path):
@@ -32,9 +32,7 @@ def load_iges(display, iges_file_path):
     base_shape = read_iges_file(iges_file_path)
     nurbs_converter = BRepBuilderAPI_NurbsConvert(base_shape, True)
     basic_shape = nurbs_converter.Shape()
-
     display.DisplayShape(basic_shape, update=True)
-
     
 def Clean(event=None):
   display.EraseAll()
@@ -50,35 +48,39 @@ def Edge(event=None):
   display.SetSelectionModeEdge()
 
 def Face(event=None):
-    display.SetSelectionModeFace()
+    display.SetSelectionModeFace()   
 
 def Vertex(event=None):
   display.SetSelectionModeVertex()
   
 def on_select_edge(selected_shapes, x, y):
-    global selected_edge,selected_face
+    global selected_edges,iges_file_path
     for shape in selected_shapes:
         if shape.ShapeType() == TopAbs.TopAbs_EDGE:
             edge = topods.Edge(shape)
-            selected_edge.append(edge)
-    if len(selected_edge) == 1 and len(selected_face) == 1:
-      process_intersection(display)  
+            selected_edges.append(edge)
+    if len(selected_edges) == 2 and len(selected_faces) == 2:
+      process_intersection(display)
+      
+    else:
+      display.EraseAll()
+      load_iges(display, iges_file_path)
+      display._select_callbacks.remove(on_select_edge)
+      display._select_callbacks.append(on_select)
 
 def on_select(selected_shapes,x,y):
-  print("In on_select command success")
-  global selected_edge, selected_face
-  for shape in selected_shapes:
-    if shape.ShapeType() == TopAbs.TopAbs_FACE:  # TopAbs_FACE
-      face=topods.Face(shape)
-      selected_face.append(face)
-      display.EraseAll()
-      display.DisplayShape(selected_face)
-      display._select_callbacks.remove(on_select)
-      display._select_callbacks.append(on_select_edge)
+    global selected_faces
+    #print("Selected Shapes:")
+    for shape in selected_shapes:
 
-def get_gauss_points(order):
-    points, weights = np.polynomial.legendre.leggauss(order)
-    return points,weights
+      if shape.ShapeType() == TopAbs.TopAbs_FACE:  # TopAbs_FACE
+          face=topods.Face(shape)
+          selected_faces.append(face)
+          display.EraseAll()
+          display.DisplayShape(face)
+          display._select_callbacks.remove(on_select)
+          display._select_callbacks.append(on_select_edge)
+          #print(f"Length of faces and edges is: {len(selected_faces)} and {len(selected_edges)}")
 
 def ed_fc_inter(edge,face):
   OCC_handle_curve2d, activeRangeBegin,activeRangeEnd = BRep_Tool.CurveOnSurface(topods.Edge(edge), topods.Face(face))
@@ -138,9 +140,117 @@ def ed_fc_inter(edge,face):
   #print("intersection points and knot vector of the curve",merged_vector)
   return merged_vector,curve_deg
 
+def edge_refinement(edge,face):
+  
+  OCC_handle_curve2d, activeRangeBegin, activeRangeEnd = BRep_Tool.CurveOnSurface(topods.Edge(edge), topods.Face(face))
+  OCC_bsplineCurve2d = geom2dconvert.CurveToBSplineCurve(OCC_handle_curve2d)
+  if OCC_bsplineCurve2d.IsPeriodic(): 
+    print("Found periodic curve!")
+    OCC_bsplineCurve2d.SetNotPeriodic()
+  # pDegree
+  pDegree = OCC_bsplineCurve2d.Degree()
+  # Knots Insertion
+  user_refinement=8
+  refined_values = np.round(np.linspace(OCC_bsplineCurve2d.FirstParameter(), OCC_bsplineCurve2d.LastParameter(), user_refinement)[1:-1])
+  knot_insertion = TColStd_Array1OfReal(1, len(refined_values))
+  knot_insertion_mult = TColStd_Array1OfInteger(1, len(refined_values))
+  for i, value in enumerate(refined_values):
+    knot_insertion.SetValue(i + 1, value)
+    knot_insertion_mult.SetValue(i + 1, 1)
+  OCC_bsplineCurve2d.InsertKnots(knot_insertion,knot_insertion_mult)
+    
+  OCC_uNoKnots = OCC_bsplineCurve2d.NbKnots()
+  # Knot vector
+  OCC_uKnotMulti = TColStd_Array1OfInteger(1,OCC_uNoKnots)
+  OCC_bsplineCurve2d.Multiplicities(OCC_uKnotMulti)
+  uNoKnots = 0
+  for ctr in range(1,OCC_uNoKnots+1): uNoKnots += OCC_uKnotMulti.Value(ctr)
+  OCC_uKnotSequence = TColStd_Array1OfReal(1,uNoKnots)
+  OCC_bsplineCurve2d.KnotSequence(OCC_uKnotSequence)
+  uKnotVector = []
+  for iKnot in range(1,uNoKnots+1): uKnotVector.append(OCC_uKnotSequence.Value(iKnot))
+  # No of CPs
+  uNoCPs = OCC_bsplineCurve2d.NbPoles()
+  # CPs
+  OCC_CPnet = TColgp_Array1OfPnt2d(1,uNoCPs)
+  OCC_bsplineCurve2d.Poles(OCC_CPnet)
+  # CP weights
+  OCC_CPweightNet = TColStd_Array1OfReal(1,uNoCPs)
+  OCC_bsplineCurve2d.Weights(OCC_CPweightNet)
+  CPNet = []
+  for iCP in range(1,uNoCPs+1):
+    OCC_CP = OCC_CPnet.Value(iCP)
+    OCC_CPweight = OCC_CPweightNet.Value(iCP)
+    CPNet.extend([OCC_CP.Y(), OCC_CP.X(), 0.0, OCC_CPweight])
+  return pDegree,uKnotVector,CPNet
+  
+def surf_to_phy(xi_vec,eta_vec,face):
+  surface_adaptor=BRepAdaptor_Surface(face)
+  x_vec=[]
+  y_vec=[]
+  z_vec=[]
+  for j in range(len(xi_vec)):
+    point_on_surface=surface_adaptor.Value(eta_vec[j],xi_vec[j])
+    x,y,z=point_on_surface.X(),point_on_surface.Y(),point_on_surface.Z()
+    x_vec.append(x)
+    y_vec.append(y)
+    z_vec.append(z)
+    #print(f"the surface point is [{xi_vec[j]},{eta_vec[j]}] and the physical point is [{x},{y},{z}]")
+  #print("Projected surface to physical successfully\n")
+
+  return x_vec,y_vec,z_vec
+      
+def phy_to_surf(x_vec,y_vec,z_vec,face):
+  #print("In physical to surface")   
+  #print(len(x_vec))
+  xi_vec=[]
+  eta_vec=[]
+  for j in range(len(x_vec)):
+    point_in_physical_space = gp_Pnt(x_vec[j], y_vec[j], z_vec[j])
+    face_surface = BRep_Tool.Surface(face)
+    projector = GeomAPI_ProjectPointOnSurf(point_in_physical_space, face_surface)
+    point_on_surface = projector.NearestPoint()
+    u, v = projector.LowerDistanceParameters()
+    #print(f"Surface Parameters of physical point [{x_vec[j]}{y_vec[j]}]: ({v}, {u})")
+    xi_vec.append(round(u,2))
+    eta_vec.append(round(v,2))
+  return eta_vec,xi_vec
+       
+def surf_to_curve(xi_vec,eta_vec,edge,face):
+  #print("In surface to curve")
+  OCC_handle_curve2d, activeRangeBegin,activeRangeEnd = BRep_Tool.CurveOnSurface(topods.Edge(edge), topods.Face(face))
+  OCC_bsplineCurve2d = geom2dconvert.CurveToBSplineCurve(OCC_handle_curve2d)
+  crv_vec=[]
+  for j in range(len(xi_vec)):
+    point2d = gp_Pnt2d(eta_vec[j],xi_vec[j]) 
+    projector = Geom2dAPI_ProjectPointOnCurve(point2d, OCC_bsplineCurve2d)
+    t = round(projector.Parameter(1),2)
+    crv_vec.append(t)
+  #print("the projected curve points are: ")
+  #print(crv_vec)
+  return crv_vec
+
+def gauss_points(order):
+    points, weights = np.polynomial.legendre.leggauss(order)
+    return points,weights
+
+def crv_to_srf(crv_pts,edge ,face):
+  OCC_handle_curve2d, activeRangeBegin,activeRangeEnd = BRep_Tool.CurveOnSurface(topods.Edge(edge), topods.Face(face))
+  OCC_bsplineCurve2d = geom2dconvert.CurveToBSplineCurve(OCC_handle_curve2d)
+  xi_values=[]
+  eta_values=[]
+  for j in range(len(crv_pts)):
+    point_on_curve = OCC_bsplineCurve2d.Value(crv_pts[j])
+    xi_values.append(round(point_on_curve.X(),2))
+    eta_values.append(round(point_on_curve.Y(),2))
+  #print("Projected points from curve to surface")
+  #print(eta_values,"\n")
+  #print(xi_values,"\n")
+  return eta_values,xi_values  
+
 def set_gps_curve(knot_vec,degree):
   knot_spans=np.unique(knot_vec)
-  gps,wts=get_gauss_points(degree+1)
+  gps,wts=gauss_points(degree+1)
   a = len(gps)
   b = len(knot_spans)
   crv_gauss_mtx = np.zeros((a+1, b))
@@ -160,20 +270,7 @@ def set_gps_curve(knot_vec,degree):
     crv_gauss_mtx[a,i] =  crv_gauss_mtx[a,i]+0.5*(xi_crv_2-xi_crv_1)
     
   return(crv_gauss_val,crv_gauss_wts,crv_gauss_jac)
-            
-def crv_to_srf(crv_pts,edge ,face):
-  OCC_handle_curve2d, activeRangeBegin,activeRangeEnd = BRep_Tool.CurveOnSurface(topods.Edge(edge), topods.Face(face))
-  OCC_bsplineCurve2d = geom2dconvert.CurveToBSplineCurve(OCC_handle_curve2d)
-  xi_values=[]
-  eta_values=[]
-  for j in range(len(crv_pts)):
-    point_on_curve = OCC_bsplineCurve2d.Value(crv_pts[j])
-    xi_values.append(round(point_on_curve.X(),2))
-    eta_values.append(round(point_on_curve.Y(),2))
-  #print("Projected points from curve to surface")
-  #print(eta_values,"\n")
-  #print(xi_values,"\n")
-  return eta_values,xi_values  
+
 
 def nurbs_detail_coupling_curve(crv,surf):
   OCC_handle_curve2d, activeRangeBegin, activeRangeEnd = BRep_Tool.CurveOnSurface(topods.Edge(crv), topods.Face(surf))
@@ -216,28 +313,39 @@ def nurbs_detail_coupling_curve(crv,surf):
   for iCP in range(1,uNoCPs+1):
     OCC_CP = OCC_CPnet.Value(iCP)
     OCC_CPweight = OCC_CPweightNet.Value(iCP)
-    CPNet.append([OCC_CP.Y(), OCC_CP.X(), OCC_CPweight])
+    CPNet.extend([OCC_CP.Y(), OCC_CP.X(), OCC_CPweight])
   CPNet = np.array(CPNet)
   CPNet_reshaped = CPNet.reshape(-1, 3)
   print("CPNet looks like ", CPNet_reshaped)
   return pDegree,uKnotVector,CPNet_reshaped
 
-def process_intersection(display):
-    global matrix_dict
-    crv_1_element_pts,deg=ed_fc_inter(selected_edge[0],selected_face[0])
-    display.EraseAll()
-    display.DisplayMessage(gp_Pnt(0,0,0),"Process completed successfully!",50, (0,0,1),False) 
-    display.DisplayMessage(gp_Pnt(20,-2,0),"You can Exit Now",30, (1,0,0),False)
 
-    crv_gs_1,crv_gs_wt_1,crv_gs_jac_1= set_gps_curve(crv_1_element_pts,deg) # Get Gauss Points  on the integration curve
-    xi_gs_1,eta_gs_1= crv_to_srf(crv_gs_1,selected_edge[0],selected_face[0])# Transfering integration points to the associated surface
-    crv_deg,crv_knt_vec,crv_CPs= nurbs_detail_coupling_curve(selected_edge[0],selected_face[0])
-    matrix_dict = {'cur_pts': crv_gs_1,'gs_wts':crv_gs_wt_1,'gs_jac':crv_gs_jac_1, 'xi_vls_1': xi_gs_1, 'eta_vls_1': eta_gs_1,
-                   'crv_deg':crv_deg,'crv_knotVec':crv_knt_vec,'crv_CPS':crv_CPs}
-    for key, value in matrix_dict.items():
-      print(f"{key}: {value}")
-    
-   
+def process_intersection(display):
+  global matrix_dict
+  crv_pts_1,deg_1=ed_fc_inter(selected_edges[0],selected_faces[0]) # intersection of first face and edge
+  display.EraseAll()
+  display.DisplayMessage(gp_Pnt(0,0,0),"Patches coupled successfully!",50, (0,0,1),False) 
+  display.DisplayMessage(gp_Pnt(20,-2,0),"You can Exit Now",30, (1,0,0),False)
+
+  crv_pts_2,deg_2=ed_fc_inter(selected_edges[1],selected_faces[1]) # intersection of second face and edge
+  xi_values_2,eta_values_2= crv_to_srf(crv_pts_2,selected_edges[1],selected_faces[1]) # curve_2 points to surface_2 points
+  x_inter,y_inter,z_inter= surf_to_phy(xi_values_2,eta_values_2,selected_faces[1]) # surface_2 points to physical points
+  xi_other,eta_other = phy_to_surf(x_inter,y_inter,z_inter,selected_faces[0]) # physical points back to surface_1 points
+  transfer_pts_1= surf_to_curve(xi_other,eta_other,selected_edges[0],selected_faces[0]) # surface_1 points back to curve_1 points
+  crv_1_element_pts = np.sort(np.unique(np.concatenate((np.array(crv_pts_1), np.array(transfer_pts_1)))))
+  crv_gs_1,crv_gs_wt_1,crv_gs_jac_1= set_gps_curve(crv_1_element_pts,deg_1) # Get Gauss Points  on the integration curve
+  xi_gs_1,eta_gs_1= crv_to_srf(crv_gs_1,selected_edges[0],selected_faces[0])# Transfering integration points of first surface
+  x_gs_1,y_gs_1,z_gs_1= surf_to_phy(xi_gs_1,eta_gs_1,selected_faces[0]) # surface_1 Gauss points to physical points
+  xi_gs_2,eta_gs_2 = phy_to_surf(x_gs_1,y_gs_1,z_gs_1,selected_faces[1]) # physical gauss points on surface_2 
+  crv_deg,crv_knt_vec,crv_CPs= nurbs_detail_coupling_curve(selected_edges[0],selected_faces[0])
+
+  
+  matrix_dict = {'cur_pts_1': crv_gs_1,'gs_wts':crv_gs_wt_1,'gs_jac':crv_gs_jac_1, 'xi_vls_1': xi_gs_1,
+                 'eta_vls_1': eta_gs_1,'xi_vls_2': xi_gs_2, 'eta_vls_2': eta_gs_2, 'crv_deg':crv_deg,'crv_knotVec':crv_knt_vec,
+                 'crv_CPS':crv_CPs}
+  for key, value in matrix_dict.items():
+    print(f"{key}: {value}")
+      
 if __name__ == '__main__':
     
     display, start_display, add_menu, add_function_to_menu = init_display('wx')
@@ -249,19 +357,19 @@ if __name__ == '__main__':
     add_function_to_menu('Selection', Face)
     add_function_to_menu('Selection', Vertex)
     add_function_to_menu('Selection', Neutral)
+    global selected_edges, selected_faces,iges_file_path
+    selected_edges=[]
+    selected_faces=[]
+    iges_file_path="C:\\Users\\oslon\\Desktop\\MSc\\Thesis\\Code Scripts\\multi-patch plate.igs"
+    #iges_file_path = sys.argv[1]
     global num_xiKnots, num_etaKnots
-    global matrix_dict, output_file
-    global selected_edge, selected_face
-    selected_edge=[]
-    selected_face=[]
-    #iges_file_path="C:\\Users\\oslon\\Desktop\\MSc\\Thesis\\Code Scripts\\multi-patch sep.igs"
-    iges_file_path = sys.argv[1]
-    output_file= 'b_rep.mat'
+    global matrix_dict,output_file,operation 
+    output_file= 'coup.mat'
     #operation= sys.argv[2]
-    num_xiKnots=int(sys.argv[3])
-    num_etaKnots=int(sys.argv[4])
-    #num_xiKnots=4
-    #num_etaKnots=6
+    #num_xiKnots=int(sys.argv[3])
+    #num_etaKnots=int(sys.argv[4])
+    num_xiKnots=5
+    num_etaKnots=5
     print(f"xi refinement points are: {num_xiKnots}")
     print(f"eta refinement points are <with increment of course>: {num_etaKnots}")
     load_iges(display, iges_file_path)
