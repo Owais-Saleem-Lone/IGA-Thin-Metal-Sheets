@@ -47,13 +47,8 @@ def getWireData(_OCC_outerWire, _OCC_wire):
 
 
 def getOuterWire(_OCC_face):
-  """
-  \param[in] _OCC_face	class: TopoDS_SHAPE	type: Face
-  \return OCC_outerWire
-  """
-  
-  OCC_outerWire = shapeanalysis.OuterWire(topods.Face(_OCC_face))
 
+  OCC_outerWire = shapeanalysis.OuterWire(topods.Face(_OCC_face))
   return OCC_outerWire
 
 def getEdgeDataWithOrientation(_OCC_edge, _OCC_wire, _OCC_face):
@@ -66,6 +61,7 @@ def getEdgeDataWithOrientation(_OCC_edge, _OCC_wire, _OCC_face):
     OCC_bsplineCurve2d.SetNotPeriodic()
   # Curve direction 
   direction = (_OCC_wire.Orientation() + _OCC_edge.Orientation() + 1)%2
+  print(f"The orientation is: {direction}")
   # pDegree
   pDegree = OCC_bsplineCurve2d.Degree()
   # No of Knots
@@ -221,7 +217,6 @@ def getNURBS(iges_file_path):
                 for i in range(bsrf.NbUPoles()):
                     #print('\n')
                     for j in range(bsrf.NbVPoles()):
-                        
                         p=poles.Value(i+1,j+1)
                         conPointMtx[num]= np.array([p.X(),p.Y(),p.Z()])
                         num=num+1

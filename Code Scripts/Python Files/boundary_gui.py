@@ -23,7 +23,7 @@ from OCC.Display.SimpleGui import *
 from OCC.Display.backend import *
 from OCC.Core import TopoDS,TopAbs
 from OCC.Core.Geom2dAPI import Geom2dAPI_ProjectPointOnCurve
-import time
+from OCC.Core.AIS import AIS_InteractiveObject
 
 
 
@@ -35,12 +35,11 @@ def load_iges(display, iges_file_path):
 
     display.DisplayShape(basic_shape, update=True)
 
-    
 def Clean(event=None):
   display.EraseAll()
   
 def Exit(event=None):
-  import sys
+  process_intersection(display)
   sys.exit()
 
 def Neutral(event=None):
@@ -54,25 +53,53 @@ def Face(event=None):
 
 def Vertex(event=None):
   display.SetSelectionModeVertex()
+ 
+def get_face_ids(ref_face):
+  tol=1e-3
+  base_shape = read_iges_file(iges_file_path)
+  nurbs_converter = BRepBuilderAPI_NurbsConvert(base_shape, True)
+  converted_shape = nurbs_converter.Shape()
+  expl = TopologyExplorer(converted_shape)
   
+  surface2 = BRepAdaptor_Surface(ref_face)
+  u_mid = (surface2.FirstUParameter() + surface2.LastUParameter()) / 2
+  v_mid = (surface2.FirstVParameter() + surface2.LastVParameter()) / 2
+  point2 = surface2.Value(u_mid,v_mid)
+  physical_point_2=gp_Pnt(point2.X(), point2.Y(), point2.Z())
+  fc_idx = 1
+  for face in expl.faces():
+    surface1 = BRepAdaptor_Surface(face)
+    u_mid1 = (surface1.FirstUParameter() + surface1.LastUParameter()) / 2
+    v_mid1 = (surface1.FirstVParameter() + surface1.LastVParameter()) / 2
+    point1 = surface1.Value(u_mid1,v_mid1)
+    physical_point_1=gp_Pnt(point1.X(), point1.Y(), point1.Z())
+    if (physical_point_1.Distance(physical_point_2) < tol) :
+      return fc_idx
+    fc_idx += 1
+   
 def on_select_edge(selected_shapes, x, y):
     global selected_edge,selected_face
     for shape in selected_shapes:
         if shape.ShapeType() == TopAbs.TopAbs_EDGE:
             edge = topods.Edge(shape)
             selected_edge.append(edge)
-    if len(selected_edge) == 1 and len(selected_face) == 1:
-      process_intersection(display)  
+
+    display.EraseAll()
+    #display.selected_shapes.clear()
+    load_iges(display, iges_file_path)
+    display._select_callbacks.remove(on_select_edge)
+    display._select_callbacks.append(on_select)
 
 def on_select(selected_shapes,x,y):
-  print("In on_select command success")
   global selected_edge, selected_face
   for shape in selected_shapes:
+    shape=selected_shapes[-1]
     if shape.ShapeType() == TopAbs.TopAbs_FACE:  # TopAbs_FACE
       face=topods.Face(shape)
       selected_face.append(face)
       display.EraseAll()
-      display.DisplayShape(selected_face)
+      #display.selected_shapes.clear()
+      display.DisplayShape(face)
       display._select_callbacks.remove(on_select)
       display._select_callbacks.append(on_select_edge)
 
@@ -108,28 +135,38 @@ def ed_fc_inter(edge,face):
   VknotArr_ref= np.round(np.linspace(float(VknotArr[0]),float(VknotArr[-1]),(num_etaKnots+2)),2)
   #print(f"The refined eta knot vector is : {VknotArr_ref}")
   ctr=0
+  counter=1
   for m in range(0,len(UknotArr_ref)):
     xi = UknotArr_ref[m] 
     ctr=ctr+1
     min_distance = float('inf')
     min_distance_projector = None
+    
     for n in range(0,len(VknotArr_ref)):
       if n+ctr-1<len(VknotArr_ref):
+        counter+=1
         eta = VknotArr_ref[n+ctr-1]
         point2d = gp_Pnt2d(eta,xi)    # Because of reverse parametrization of geometry_curve
         projector = Geom2dAPI_ProjectPointOnCurve(point2d, OCC_bsplineCurve2d) # Orthogonal Projection
-        distance= round(projector.Distance(1),2)
         #print(f"the point is [{xi},{eta}] and the distance is : {distance}")
-        if distance < min_distance:
-          min_distance = distance
-          min_distance_projector = projector
-          
-    sol=min_distance_projector.NbPoints()
-    for p in range(1,sol+1):
-      if sol==2:
-        print(f"The possible number of projections are: {sol}")
-      t = round(min_distance_projector.Parameter(sol),2) # The first solution among the possible projections
-      curve_points_elem.append(t)
+        if projector is not None:
+         if projector.NbPoints() !=0:
+          #print(f"Num of projections for the point {ctr} and {counter} are: {projector.NbPoints()}")
+          distance= round(projector.Distance(1),2)
+          if distance < min_distance:
+            min_distance = distance
+            min_distance_projector = projector
+        else:
+          print(f" The projection failed for the point ({xi} {eta})")
+    
+    if min_distance_projector is not None:
+      if min_distance_projector.NbPoints() !=0:
+        sol=min_distance_projector.NbPoints()
+        for p in range(1,sol+1):
+          if sol==2:
+            print(f"The possible number of projections are: {sol}")
+          t = round(min_distance_projector.Parameter(sol),2) # The first solution among the possible projections
+          curve_points_elem.append(t)
 
   curve_points_elem=np.array(curve_points_elem)
   merged_vector = np.sort(np.unique(np.concatenate((curve_points_elem, KnotVector))))
@@ -185,14 +222,14 @@ def nurbs_detail_coupling_curve(crv,surf):
   # pDegree
   pDegree = OCC_bsplineCurve2d.Degree()
   # Knots
-  user_refinement=8
-  refined_values = np.round(np.linspace(OCC_bsplineCurve2d.FirstParameter(), OCC_bsplineCurve2d.LastParameter(), user_refinement)[1:-1])
-  knot_insertion = TColStd_Array1OfReal(1, len(refined_values))
-  knot_insertion_mult = TColStd_Array1OfInteger(1, len(refined_values))
-  for i, value in enumerate(refined_values):
-    knot_insertion.SetValue(i + 1, value)
-    knot_insertion_mult.SetValue(i + 1, 1)
-  OCC_bsplineCurve2d.InsertKnots(knot_insertion,knot_insertion_mult)
+  #user_refinement=8
+  #refined_values = np.round(np.linspace(OCC_bsplineCurve2d.FirstParameter(), OCC_bsplineCurve2d.LastParameter(), user_refinement)[1:-1])
+  #knot_insertion = TColStd_Array1OfReal(1, len(refined_values))
+  #knot_insertion_mult = TColStd_Array1OfInteger(1, len(refined_values))
+  #for i, value in enumerate(refined_values):
+   # knot_insertion.SetValue(i + 1, value)
+    #knot_insertion_mult.SetValue(i + 1, 1)
+  #OCC_bsplineCurve2d.InsertKnots(knot_insertion,knot_insertion_mult)
     
   OCC_uNoKnots = OCC_bsplineCurve2d.NbKnots()
   # Knot vector
@@ -219,24 +256,29 @@ def nurbs_detail_coupling_curve(crv,surf):
     CPNet.append([OCC_CP.Y(), OCC_CP.X(), OCC_CPweight])
   CPNet = np.array(CPNet)
   CPNet_reshaped = CPNet.reshape(-1, 3)
-  print("CPNet looks like ", CPNet_reshaped)
+  #print("CPNet looks like ", CPNet_reshaped)
   return pDegree,uKnotVector,CPNet_reshaped
 
 def process_intersection(display):
-    global matrix_dict
-    crv_1_element_pts,deg=ed_fc_inter(selected_edge[0],selected_face[0])
-    display.EraseAll()
-    display.DisplayMessage(gp_Pnt(0,0,0),"Process completed successfully!",50, (0,0,1),False) 
-    display.DisplayMessage(gp_Pnt(20,-2,0),"You can Exit Now",30, (1,0,0),False)
-
-    crv_gs_1,crv_gs_wt_1,crv_gs_jac_1= set_gps_curve(crv_1_element_pts,deg) # Get Gauss Points  on the integration curve
-    xi_gs_1,eta_gs_1= crv_to_srf(crv_gs_1,selected_edge[0],selected_face[0])# Transfering integration points to the associated surface
-    crv_deg,crv_knt_vec,crv_CPs= nurbs_detail_coupling_curve(selected_edge[0],selected_face[0])
-    matrix_dict = {'cur_pts': crv_gs_1,'gs_wts':crv_gs_wt_1,'gs_jac':crv_gs_jac_1, 'xi_vls_1': xi_gs_1, 'eta_vls_1': eta_gs_1,
-                   'crv_deg':crv_deg,'crv_knotVec':crv_knt_vec,'crv_CPS':crv_CPs}
-    for key, value in matrix_dict.items():
-      print(f"{key}: {value}")
-    
+    matrix_dict_dirichlet=[]
+    print(f" Number of faces and edges selected are: {len(selected_face)} and {len(selected_edge)}")
+    for con_num in range(len(selected_edge)):
+        crv_1_element_pts,deg=ed_fc_inter(selected_edge[con_num],selected_face[con_num])
+        display.EraseAll()
+        display.DisplayMessage(gp_Pnt(0,0,0),"Process completed successfully!",50, (0,0,1),False) 
+        display.DisplayMessage(gp_Pnt(20,-2,0),"You can Exit Now",30, (1,0,0),False)
+        crv_gs_1,crv_gs_wt_1,crv_gs_jac_1= set_gps_curve(crv_1_element_pts,deg) # Get Gauss Points  on the integration curve
+        xi_gs_1,eta_gs_1= crv_to_srf(crv_gs_1,selected_edge[con_num],selected_face[con_num])# Transfering integration points to the associated surface
+        crv_deg,crv_knt_vec,crv_CPs= nurbs_detail_coupling_curve(selected_edge[con_num],selected_face[con_num])
+        ids=get_face_ids(selected_face[con_num])
+        matrix_dict = {'cur_pts': crv_gs_1,'gs_wts':crv_gs_wt_1,'gs_jac':crv_gs_jac_1, 'xi_vls_1': xi_gs_1, 'eta_vls_1': eta_gs_1,
+                      'crv_deg':crv_deg,'crv_knotVec':crv_knt_vec,'crv_CPS':crv_CPs,'face_id':ids}
+        for key, value in matrix_dict.items():
+          print(f"{key}: {value}")
+        matrix_dict_dirichlet.append(matrix_dict)
+      
+    data_to_save = {'dir_list': matrix_dict_dirichlet}
+    savemat(output_file, data_to_save)
    
 if __name__ == '__main__':
     
@@ -254,17 +296,19 @@ if __name__ == '__main__':
     global selected_edge, selected_face
     selected_edge=[]
     selected_face=[]
-    #iges_file_path="C:\\Users\\oslon\\Desktop\\MSc\\Thesis\\Code Scripts\\multi-patch sep.igs"
+    global iges_file_path
+    #iges_file_path="C:\\Users\\oslon\\Desktop\\MSc\\Thesis\\Code Scripts\\low_dim_rect_3patch.igs"
+    #iges_file_path="C:\\Users\\oslon\\Desktop\\MSc\\Thesis\\Code Scripts\\basicRectSurf.igs"
+    #iges_file_path="C:\\Users\\oslon\\Desktop\\MSc\\Thesis\\Code Scripts\\trimmedRect.igs"
+
     iges_file_path = sys.argv[1]
     output_file= 'b_rep.mat'
     #operation= sys.argv[2]
     num_xiKnots=int(sys.argv[3])
     num_etaKnots=int(sys.argv[4])
-    #num_xiKnots=4
-    #num_etaKnots=6
-    print(f"xi refinement points are: {num_xiKnots}")
-    print(f"eta refinement points are <with increment of course>: {num_etaKnots}")
+    #num_xiKnots=10
+    #num_etaKnots=10
     load_iges(display, iges_file_path)
     display._select_callbacks.append(on_select)
     start_display()
-    savemat(output_file, matrix_dict)
+    
