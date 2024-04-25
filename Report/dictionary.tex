@@ -1,0 +1,68 @@
+% Define custom colors
+\definecolor{vscode-purple}{rgb}{0.502, 0, 0.502}
+\definecolor{vscode-green}{rgb}{0, 0.502, 0}
+\definecolor{vscode-blue}{rgb}{0, 0, 0.502}
+\definecolor{vscode-yellow}{rgb}{0.502, 0.502, 0}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}% Light gray background
+
+% Define custom Python style
+\lstdefinestyle{python}{
+    language=Python,
+    backgroundcolor=\color{backcolour},
+    commentstyle=\color{vscode-green},
+    keywordstyle=\color{vscode-blue},
+    numberstyle=\tiny\color{vscode-yellow},
+    stringstyle=\color{vscode-purple},
+    basicstyle=\ttfamily\small,
+    breakatwhitespace=false,
+    breaklines=true,
+    captionpos=b,
+    keepspaces=true,
+    showspaces=false,
+    showstringspaces=false,
+    showtabs=false,
+    tabsize=4,
+    extendedchars=true,
+    inputencoding=utf8,
+    frame=tb,
+    framerule=1pt,
+    numbersep=5pt,
+    numbers=left,
+    stepnumber=1,  % Display every line number
+    firstnumber=1   % Specify the starting line number
+}
+
+\lstset{style=python}
+\begin{adjustwidth}{-0.5cm}{-0.5cm}
+\begin{lstlisting}{language=Python}
+from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_NurbsConvert
+from scipy.io import savemat
+#..Importing classes
+#...
+#...
+
+output_file = 'output.mat' # initiating a .mat file that is sent to TUMIGA
+
+# Rest of the code
+#...
+#...
+
+# Creating the dictionay...
+    if isInner:
+            
+        my_dict = {'isTrim':1, 'uDeg': UCurveDegree,'vDeg': VCurveDegree,'uknotVector':UknotArr,
+            'vknotVector':VknotArr,'weights':weightArray,'controlPoints':conPointMtx.T,
+            'outer_wire':outer_wire_dict,'inner_wires':inner_wire_dict}
+        
+    else:
+        my_dict = {'isTrim':0, 'uDeg': UCurveDegree,'vDeg': VCurveDegree,'uknotVector':UknotArr,
+            'vknotVector':VknotArr,'weights':weightArray,'controlPoints':conPointMtx.T,'outer_wire':outer_wire_dict}
+        
+    fc_idx += 1
+    dict_list.append(my_dict)  
+    
+data_to_save = {'dict_list': dict_list, 'dimension': geo_dim}
+savemat(output_file, data_to_save)
+
+\end{lstlisting}
+\end{adjustwidth}

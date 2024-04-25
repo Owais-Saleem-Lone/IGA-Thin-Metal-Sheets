@@ -1,0 +1,123 @@
+% Define custom colors
+\definecolor{vscode-purple}{rgb}{0.502, 0, 0.502}
+\definecolor{vscode-green}{rgb}{0, 0.502, 0}
+\definecolor{vscode-blue}{rgb}{0, 0, 0.502}
+\definecolor{vscode-yellow}{rgb}{0.502, 0.502, 0}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}% Light gray background
+
+% Define custom Python style
+\lstdefinestyle{python2}{
+    language=Python,
+    backgroundcolor=\color{backcolour},
+    commentstyle=\color{vscode-green},
+    keywordstyle=\color{vscode-blue},
+    numberstyle=\tiny\color{vscode-yellow},
+    stringstyle=\color{vscode-purple},
+    basicstyle=\ttfamily\small,
+    breakatwhitespace=false,
+    breaklines=true,
+    captionpos=b,
+    keepspaces=true,
+    showspaces=false,
+    showstringspaces=false,
+    showtabs=false,
+    tabsize=4,
+    extendedchars=true,
+    inputencoding=utf8,
+    frame=tb,
+    framerule=1pt,
+    numbers=left,
+    numbersep=5pt,
+}
+
+% Apply the style
+\lstset{style=python2}
+\begin{adjustwidth}{-0.5cm}{-0.5cm}
+
+\begin{lstlisting}{language=Python}
+import numpy as np
+from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_NurbsConvert
+from OCC.Core.BRepAdaptor import BRepAdaptor_Surface
+from OCC.Extend.DataExchange import read_iges_file
+from OCC.Extend.TopologyUtils import TopologyExplorer
+from OCC.Core.GeomAbs import GeomAbs_BSplineSurface
+
+def getNURBS_Surface(iges_file_path):
+    
+    #read iges file
+    base_shape = read_iges_file(iges_file_path)
+    
+    # conversion to a nurbs representation
+    nurbs_converter = BRepBuilderAPI_NurbsConvert(base_shape, True)
+    converted_shape = nurbs_converter.Shape()
+    
+    expl = TopologyExplorer(converted_shape)
+    
+    # loop over faces
+    fc_idx = 1
+    for face in expl.faces():
+        print("=== Face %i ===" % fc_idx)
+        surf = BRepAdaptor_Surface(face, True)
+        
+        # check each of the face is a BSpline surface
+        surf_type = surf.GetType()
+        if not surf_type == GeomAbs_BSplineSurface:
+            raise AssertionError("the face was not converted to a 
+            GeomAbs_BSplineSurface")
+        
+        # Polynomial Order
+        bsrf = surf.BSpline()
+        UCurveDegree = bsrf.UDegree()
+        VCurveDegree = bsrf.VDegree()
+        print("UDegree:", UCurveDegree )
+        print("VDegree:", VCurveDegree )
+        
+        # uknots array
+        uknots = bsrf.UKnots()
+        print("\nUknots:")
+        UknotArr=[]
+        for i in range(bsrf.NbUKnots()):
+            UknotArr.append(uknots.Value(i+1))
+        UknotArr = [UknotArr[0]] * (UCurveDegree+1) + UknotArr[1:-1] 
+        + [UknotArr[-1]] * (UCurveDegree+1)
+        print(','.join(map(str, UknotArr)))
+        
+        # vknots array
+        vknots = bsrf.VKnots()
+        print("Vknots:")
+        VknotArr=[]
+        for i in range(bsrf.NbVKnots()):
+            VknotArr.append(vknots.Value(i+1))
+        VknotArr = [VknotArr[0]] * (VCurveDegree+1) + VknotArr[1:-1] 
+        + [VknotArr[-1]] * (VCurveDegree+1)
+        print(','.join(map(str, VknotArr)))
+
+        # Weights 
+        weights = bsrf.Weights()
+        if weights is not None:
+            weightMatrix=np.zeros((bsrf.NbUPoles(),bsrf.NbVPoles()))
+            for i in range(bsrf.NbUPoles()):
+                for j in range(bsrf.NbVPoles()):
+                    weightMatrix[i,j] = weights.Value(i + 1, j + 1)       
+        # weights can be None
+        else:
+            weightMatrix=np.ones((bsrf.NbUPoles(),bsrf.NbVPoles()))    
+        print("\nweight: \n", weightMatrix)
+
+        # control Points
+        poles = bsrf.Poles()
+        if poles is not None:
+            polesArr = []
+            print("\nPoles (control points):")
+            for i in range(bsrf.NbUPoles()):
+                for j in range(bsrf.NbVPoles()):
+                    p = poles.Value(i + 1, j + 1)
+                    polesArr.append(p.X())
+                    polesArr.append(p.Y())
+                    polesArr.append(p.Z())
+        print(polesArr)
+
+        print()
+        fc_idx += 1
+\end{lstlisting}
+\end{adjustwidth}

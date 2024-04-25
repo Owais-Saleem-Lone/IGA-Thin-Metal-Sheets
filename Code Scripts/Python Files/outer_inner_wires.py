@@ -1,5 +1,6 @@
 import sys
 from scipy.io import savemat
+from scipy.spatial import ConvexHull
 import numpy as np
 from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_NurbsConvert,BRepBuilderAPI_MakeEdge, BRepBuilderAPI_MakeWire
 from OCC.Core.BRepAdaptor import BRepAdaptor_Curve,BRepAdaptor_Surface,BRepAdaptor_CompCurve
@@ -28,8 +29,11 @@ def checkInner(_OCC_outerWire, _OCC_wire):
   # Determine inner or outer boundary loop
   if _OCC_wire.IsEqual(_OCC_outerWire):
     inner = False
+    print(f"Outer Wire Detected")
   else:
     inner = True
+    print(f"Inner Wire Detected")
+
   
   # Count number of trimming curves in one trimming loop
   #noTrCurves = 0  
@@ -50,52 +54,30 @@ def getOuterWire(_OCC_face):
         print(f" The orientation of outer wire edge is clockwise")
 
     counter=1
-    out_wire_dict=[]
+    out_edge_dict_list=[]
+    x_outer_wire=[]
+    y_outer_wire=[]
     while faceWireEdgeExplorer.More():        # Checking the edges in outer the wire, 4 in my case
         print(f" Outer Edge Number {counter}")
         currentFaceWireEdge = faceWireEdgeExplorer.Current()
         faceWireEdgeExplorer.Next()
-        OCC_handle_curve2d, activeRangeBegin, activeRangeEnd = BRep_Tool.CurveOnSurface(topods.Edge(currentFaceWireEdge), topods.Face(_OCC_face))
-        OCC_bsplineCurve2d = geom2dconvert.CurveToBSplineCurve(OCC_handle_curve2d)#.GetObject()
-        # pDegree
-        pDegree = OCC_bsplineCurve2d.Degree()
-        print(f" The degree of edge {counter} is ", pDegree)
-        # No of Knots
-        OCC_uNoKnots = OCC_bsplineCurve2d.NbKnots()
-        # Knot vector
-        OCC_uKnotMulti = TColStd_Array1OfInteger(1,OCC_uNoKnots)
-        OCC_bsplineCurve2d.Multiplicities(OCC_uKnotMulti)
-        uNoKnots = 0
-        for ctr in range(1,OCC_uNoKnots+1): uNoKnots += OCC_uKnotMulti.Value(ctr)
-        OCC_uKnotSequence = TColStd_Array1OfReal(1,uNoKnots)
-        OCC_bsplineCurve2d.KnotSequence(OCC_uKnotSequence)
-        uKnotVector = []
-        for iKnot in range(1,uNoKnots+1): uKnotVector.append(OCC_uKnotSequence.Value(iKnot))
-        print(f" The knot vector of edge {counter} is ", uKnotVector)
-        # No of CPs
-        uNoCPs = OCC_bsplineCurve2d.NbPoles()
-        poles=OCC_bsplineCurve2d.Poles()
-        # CP weights
-        weights = OCC_bsplineCurve2d.Weights()
-        weightArray=[]
-        if weights is not None:
-            for i in range(OCC_bsplineCurve2d.NbPoles()):
-                weightArray.append(weights.Value(i+1))
-        else:
-            weightArray=np.ones(OCC_bsplineCurve2d.NbPoles())
-            
-        controlPointMatrix= np.zeros((OCC_bsplineCurve2d.NbPoles(),2))
-
-        if poles is not None:
-            for i in range(OCC_bsplineCurve2d.NbPoles()):
-                p = poles.Value(i + 1)
-                controlPointMatrix[i]= np.array([p.X(),p.Y()])
-        print(f" The control Point matrix of edge {counter} is ", controlPointMatrix.T)
-        
-        out_edge_dict = {'polDegree': pDegree,'knotVector':uKnotVector,
-                            'weights':weightArray,'controlPoints':controlPointMatrix.T}
+        out_edge_dict,x_edge,y_edge=getEdgeDataWithOrientation(currentFaceWireEdge,_OCC_face)
+        x_outer_wire.extend(x_edge)
+        y_outer_wire.extend(y_edge)
         counter +=1
-        out_wire_dict.append(out_edge_dict)
+        out_edge_dict_list.append(out_edge_dict)
+    
+    x_outer_wire=np.array(x_outer_wire)
+    x_outer_wire = x_outer_wire.reshape(-1, 1)
+    y_outer_wire=np.array(y_outer_wire)
+    y_outer_wire = y_outer_wire.reshape(-1, 1)
+    polygon=rearrange(np.hstack((x_outer_wire, y_outer_wire)),len(out_edge_dict_list))
+
+    #print("The size of y_outer_wire is ", y_outer_wire.size)
+    #print("The number of edges in outer_wire are ",len(out_edge_dict_list))
+
+    out_wire_dict={"outer_edge_dict_list":out_edge_dict_list,"outer_Trim_Polygon":polygon}
+    #print(f" The outer wire data before processing looks like\n", out_wire_dict['outer_Trim_Polygon'])
     return OCC_outerWire,out_wire_dict
 
 def getEdgeDataWithOrientation(_OCC_edge, _OCC_face):
@@ -105,7 +87,7 @@ def getEdgeDataWithOrientation(_OCC_edge, _OCC_face):
     OCC_bsplineCurve2d = geom2dconvert.CurveToBSplineCurve(OCC_handle_curve2d)#.GetObject()
     # pDegree
     pDegree = OCC_bsplineCurve2d.Degree()
-    print(f" The edge degree is {pDegree}")
+    #print(f" The edge degree is {pDegree}")
     # No of Knots
     OCC_uNoKnots = OCC_bsplineCurve2d.NbKnots()
     # Knot vector
@@ -117,7 +99,7 @@ def getEdgeDataWithOrientation(_OCC_edge, _OCC_face):
     OCC_bsplineCurve2d.KnotSequence(OCC_uKnotSequence)
     uKnotVector = []
     for iKnot in range(1,uNoKnots+1): uKnotVector.append(OCC_uKnotSequence.Value(iKnot))
-    print(f" The edge knot vector  is {uKnotVector}")
+    #print(f" The edge knot vector  is {uKnotVector}")
 
     # No of CPs
     poles=OCC_bsplineCurve2d.Poles()
@@ -129,44 +111,43 @@ def getEdgeDataWithOrientation(_OCC_edge, _OCC_face):
             weightArray.append(weights.Value(i+1))
     else:
         weightArray=np.ones(OCC_bsplineCurve2d.NbPoles())
-    print(f" The edge weights are {weightArray}")
+    #print(f" The edge weights are {weightArray}")
 
     controlPointMatrix= np.zeros((OCC_bsplineCurve2d.NbPoles(),2))
     if poles is not None:
         for i in range(OCC_bsplineCurve2d.NbPoles()):
                 p = poles.Value(i + 1)
                 controlPointMatrix[i]= np.array([p.X(),p.Y(),])
-    print(f" The edge control Points are {controlPointMatrix.T}")
+    #print(f" The edge control Points are {controlPointMatrix.T}")
 
-    inner_edge_dict = {'polDegree': pDegree,'knotVector':uKnotVector,
+    edge_dict = {'polDegree': pDegree,'knotVector':uKnotVector,
                         'weights':weightArray,'controlPoints':controlPointMatrix.T}
     
-    # Create a linear space with 25 points
+    # Create a linear space with 40 points
     start_value = uKnotVector[0]
-    end_value = uKnotVector[-1] 
+    end_value = uKnotVector[-1]
     num_points = 40
     linear_space = np.linspace(start_value, end_value, num_points)
-    points_on_curve = [OCC_bsplineCurve2d.Value(i) for i in linear_space ]
+    points_on_curve = [OCC_bsplineCurve2d.Value(i) for i in linear_space]
     x_coordinates=[]
     y_coordinates=[]
     for point in points_on_curve:
-        x_coordinates.append(point.X())
-        y_coordinates.append(point.Y())
-        
-    return inner_edge_dict,x_coordinates,y_coordinates
+        x_coordinates.append(point.Y())
+        y_coordinates.append(point.X())
+    return edge_dict,x_coordinates,y_coordinates
 
 def getWires(_OCC_face):
     
     OCC_outerWire,outer_wire_dict = getOuterWire(_OCC_face)
   
     faceWireExplorer = TopExp_Explorer(_OCC_face, TopAbs_WIRE) # This will explore outer and inner wires
-    
+    inner_wire_dict_list=[]
+    inner_wire_counter=1
     while faceWireExplorer.More():        # Loop through all wires (outer and inner)
-        
         currentFaceWire = faceWireExplorer.Current()
         faceWireExplorer.Next()
         # Collect wire data
-        inner_dict=[]
+        inner_wire_dict=[]
         X_trim_vec=[]
         Y_trim_vec=[]
         isInner = checkInner(OCC_outerWire, currentFaceWire)   # check if the wire is exterior or interior
@@ -180,18 +161,69 @@ def getWires(_OCC_face):
                 print(f" The orientation of the inner wire is anti-clockwise")
             else:
                 print(f" The orientation of inner wire is clockwise")
+            inner_edge_dict=[]
+            print(f"Inner Wire {inner_wire_counter}")
             while faceWireEdgeExplorer.More():        # Checking the edges in the wire, 4 in my case
-                print(f"Inner wire {counter}")
+                print(f"Inner Edge {counter}")
                 currentFaceWireEdge = faceWireEdgeExplorer.Current()
                 faceWireEdgeExplorer.Next()
                 dict,x,y= getEdgeDataWithOrientation(currentFaceWireEdge, _OCC_face)
                 X_trim_vec.append(x)
                 Y_trim_vec.append(y)
-                inner_dict.append(dict)
+                inner_edge_dict.append(dict)
                 counter+=1
-                
-    return outer_wire_dict,isInner,inner_dict, X_trim_vec,Y_trim_vec       
-                        
+            X_trim_vec=np.array(X_trim_vec)
+            X_trim_vec= X_trim_vec.reshape(-1, 1)
+            Y_trim_vec=np.array(Y_trim_vec)
+            Y_trim_vec=Y_trim_vec.reshape(-1,1)
+            inner_polygon= rearrange(np.hstack((X_trim_vec,Y_trim_vec)),len(inner_edge_dict))
+            inner_wire_dict={'inner_edge_dict_list':inner_edge_dict,'Trim_Polygon':inner_polygon}
+            inner_wire_dict_list.append(inner_wire_dict)
+            inner_wire_counter+=1
+    return outer_wire_dict,isInner,inner_wire_dict_list       
+ 
+ 
+def rearrange(data,num_edges):
+    
+    # length of an edge data
+    len_dataset= data.shape[0]//num_edges
+    reordered_data=np.zeros(data.shape)
+    vertices = np.zeros((2*num_edges,2))
+
+    # Ordering the given data set
+    for i in range(num_edges-1):
+        data_i= data[i*len_dataset:(i+1)*len_dataset,:]
+        start_i=data_i[0,:]
+        for j in range(i+1,num_edges):
+            data_j= data[j*len_dataset:(j+1)*len_dataset,:]
+            start_j=data_j[0,:]
+            if start_i[0]==start_j[0] and start_i[1]==start_j[1]:
+                data_j=data_j[::-1]
+                data[j*len_dataset:(j+1)*len_dataset,:]=data_j
+                break
+    
+    for i in range(num_edges-1):
+        if i==0:
+            data_i= data[i*len_dataset:(i+1)*len_dataset,:]
+            reordered_data[i*len_dataset:(i+1)*len_dataset,:]=data_i
+            vertices[2*i,:]=data_i[0,:]
+            vertices[2*i+1,:]=data_i[-1,:]
+            end_i=data_i[-1,:]
+        else:
+            data_i= reordered_data[i*len_dataset:(i+1)*len_dataset,:]
+            end_i=data_i[-1,:]
+        
+        for j in range(num_edges):
+            data_j= data[j*len_dataset:(j+1)*len_dataset,:]
+            start_j=data_j[0,:]        
+            if end_i[0]==start_j[0] and end_i[1]==start_j[1]:
+                reordered_data[(i+1)*len_dataset:(i+2)*len_dataset,:]=data_j
+                vertices[2*i,:]=data_j[0,:]
+                vertices[2*i+1,:]=data_j[-1,:]
+                break  
+    #print(reordered_data)
+    return reordered_data    
+    
 def getNURBS(iges_file_path):
     base_shape = read_iges_file(iges_file_path)
     iges_reader = IGESControl_Reader()
@@ -277,7 +309,7 @@ def getNURBS(iges_file_path):
             for i in range(bsrf.NbUKnots()):
                 UknotArr.append(uknots.Value(i+1))
             UknotArr = [UknotArr[0]] * (UCurveDegree+1) + UknotArr[1:-1] + [UknotArr[-1]] * (UCurveDegree+1)
-            print(f"Surface UKnot Vector is: ",UknotArr)
+            #print(f"Surface UKnot Vector is: ",UknotArr)
 
             # vknots array
             vknots = bsrf.VKnots()
@@ -286,7 +318,7 @@ def getNURBS(iges_file_path):
             for i in range(bsrf.NbVKnots()):
                 VknotArr.append(vknots.Value(i+1))
             VknotArr = [VknotArr[0]] * (VCurveDegree+1) + VknotArr[1:-1] + [VknotArr[-1]] * (VCurveDegree+1)
-            print(f"Surface VKnot Vector is: ",VknotArr)
+            #print(f"Surface VKnot Vector is: ",VknotArr)
 
             # Weights 
             weights = bsrf.Weights()
@@ -314,20 +346,23 @@ def getNURBS(iges_file_path):
                         p=poles.Value(i+1,j+1)
                         conPointMtx[num]= np.array([p.X(),p.Y(),p.Z()])
                         num=num+1
-            print(f" Surface Control Points are",conPointMtx.T)
+            #print(f" Surface Control Points are",conPointMtx.T)
             
             # Getting Inner and Outer Wires of each Face
-            outer_wire_dict, isInner,inner_wire_dict,X_trim_vec,Y_trim_vec=getWires(face)
+            outer_wire_dict, isInner,inner_wire_dict,=getWires(face)
             if isInner:
                     
                 my_dict = {'isTrim':1, 'uDeg': UCurveDegree,'vDeg': VCurveDegree,'uknotVector':UknotArr,
                     'vknotVector':VknotArr,'weights':weightArray,'controlPoints':conPointMtx.T,
-                    'outer_wire':outer_wire_dict,'inner_wire':inner_wire_dict,'TrimPolygon':[X_trim_vec,Y_trim_vec]}
+                    'outer_wire':outer_wire_dict,'inner_wires':inner_wire_dict}
+                print(f"the number of inner wires are: {len(inner_wire_dict)}\n")
                 
             else:
                 my_dict = {'isTrim':0, 'uDeg': UCurveDegree,'vDeg': VCurveDegree,'uknotVector':UknotArr,
                     'vknotVector':VknotArr,'weights':weightArray,'controlPoints':conPointMtx.T,'outer_wire':outer_wire_dict}
-                
+                print(f"the number of inner wires are: {len(inner_wire_dict)}\n")
+                print(f"the number of outer edges in outer wire are: {len(outer_wire_dict['outer_edge_dict_list'])}\n")
+
             fc_idx += 1
             dict_list.append(my_dict)  
             
@@ -341,9 +376,11 @@ def getNURBS(iges_file_path):
 if __name__ == "__main__":
     
     #iges_file_path="C:\\Users\\oslon\\Desktop\\MSc\\Thesis\\Code Scripts\\trimmedRect.igs"
-    iges_file_path="C:\\Users\\oslon\\Desktop\\MSc\\Thesis\\Code Scripts\\low_dim_rect_3patch.igs"
-    
-    #file_path = sys.argv[1]
+    #iges_file_path="C:\\Users\\oslon\\Desktop\\MSc\\Thesis\\Code Scripts\\low_dim_rect_3patch.igs"
+    #iges_file_path="C:\\Users\\oslon\\Desktop\\MSc\\Thesis\\Code Scripts\\low_dim_rect_3patch_trimmed.igs"
+    #iges_file_path="C:\\Users\\oslon\\Desktop\\MSc\\Thesis\\Code Scripts\\basicRectSurf.igs"
+
+    iges_file_path = sys.argv[1]
     output_file = getNURBS(iges_file_path)
 
     

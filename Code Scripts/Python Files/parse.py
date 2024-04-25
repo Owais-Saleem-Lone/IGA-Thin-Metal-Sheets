@@ -93,7 +93,6 @@ def getEdgeDataWithOrientation(_OCC_edge, _OCC_wire, _OCC_face):
   end_value = uKnotVector[-1] 
   num_points = 25
   linear_space = np.linspace(start_value, end_value, num_points)
-  num_points = 25
   points_on_curve = [OCC_bsplineCurve2d.Value(i) for i in linear_space ]
   x_coordinates=[]
   y_coordinates=[]

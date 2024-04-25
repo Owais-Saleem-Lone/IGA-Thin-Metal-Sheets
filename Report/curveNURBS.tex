@@ -1,0 +1,114 @@
+% Define custom colors
+\definecolor{vscode-purple}{rgb}{0.502, 0, 0.502}
+\definecolor{vscode-green}{rgb}{0, 0.502, 0}
+\definecolor{vscode-blue}{rgb}{0, 0, 0.502}
+\definecolor{vscode-yellow}{rgb}{0.502, 0.502, 0}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}% Light gray background
+
+% Define custom Python style
+\lstdefinestyle{python}{
+    language=Python,
+    backgroundcolor=\color{backcolour},
+    commentstyle=\color{vscode-green},
+    keywordstyle=\color{vscode-blue},
+    numberstyle=\tiny\color{vscode-yellow},
+    stringstyle=\color{vscode-purple},
+    basicstyle=\ttfamily\small,
+    breakatwhitespace=false,
+    breaklines=true,
+    captionpos=b,
+    keepspaces=true,
+    showspaces=false,
+    showstringspaces=false,
+    showtabs=false,
+    tabsize=4,
+    extendedchars=true,
+    inputencoding=utf8,
+    frame=tb,
+    framerule=1pt,
+    numbersep=5pt,
+    numbers=left,
+    stepnumber=1,  % Display every line number
+    firstnumber=1   % Specify the starting line number
+}
+
+\lstset{style=python}
+\begin{adjustwidth}{-0.5cm}{-0.5cm}
+\begin{lstlisting}{language=Python}
+from OCC.Core.BRepBuilderAPI import BRepBuilderAPI_NurbsConvert
+from OCC.Core.BRepAdaptor import BRepAdaptor_Curve
+from OCC.Extend.DataExchange import read_iges_file
+from OCC.Extend.TopologyUtils import TopologyExplorer
+from OCC.Core.GeomAbs import GeomAbs_BSplineCurve
+import numpy as np
+
+def getNURBS_Curve(iges_file_path):
+    
+    #read iges file
+    base_shape = read_iges_file(iges_file_path)
+    
+    # conversion to a nurbs representation
+    nurbs_converter = BRepBuilderAPI_NurbsConvert(base_shape, True)
+    
+    # nurbs_converter.Perform()
+    converted_shape = nurbs_converter.Shape()
+    expl = TopologyExplorer(converted_shape)
+    
+    # loop over edges
+    cur_idx = 1
+
+    for edge in expl.edges():
+        print("=== Edge %i ===" % cur_idx)
+        curv = BRepAdaptor_Curve(edge)
+        
+        # check each of the edge if it is a BSpline curve
+        curv_type = curv.GetType()
+        if not curv_type == GeomAbs_BSplineCurve:
+            raise AssertionError("the face was not converted to a 
+            GeomAbs_BSplineCurve")
+        
+        # Polynomial Order
+        bcurve = curv.BSpline()
+        curveDegree = bcurve.Degree()
+        print("Degree:", curveDegree)
+    
+        #knots array
+        knots = bcurve.Knots()
+        print("\nknots:")
+        knotArr=[]
+        for i in range(bcurve.NbKnots()):
+            knotArr.append(knots.Value(i + 1))
+        knotArray = [knotArr[0]] * (curveDegree+1) + knotArr[1:-1] 
+        + [knotArr[-1]] * (curveDegree+1)
+        print(','.join(map(str, knotArray)))
+        
+        # weights
+        weights = bcurve.Weights()
+        # PythonOCC does not return weights if all weights are equal to one.
+        if weights is not None:
+            weightArray = np.zeros((1,bcurve.NbPoles()))
+            for i in range(bcurve.NbPoles()):
+                weightArray[0,i] = weights.Value(i + 1)     
+        else:
+            # If weights are not returned, we set all equal to one
+            weightArray=np.ones((1,bcurve.NbPoles()))
+        print("\nweight: ")
+        print(weightArray)
+            
+        # control points (aka poles)
+        poles = bcurve.Poles()
+ 
+        if poles is not None:
+            poleArray = []
+            print("\nPoles (control points):")
+            for i in range(bcurve.NbPoles()):
+                    p = poles.Value(i + 1)
+                    poleArray.append(p.X())
+                    poleArray.append(p.Y())
+                    poleArray.append(p.Z())
+        print(poleArray)
+        
+        print()
+        cur_idx += 1
+\end{lstlisting}
+\end{adjustwidth}

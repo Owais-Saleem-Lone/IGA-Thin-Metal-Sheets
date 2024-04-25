@@ -1,0 +1,78 @@
+\definecolor{matlab-comment}{RGB}{34,139,34} % Dark green
+\definecolor{matlab-keyword}{RGB}{0,0,255}   % Blue
+\definecolor{matlab-string}{RGB}{160,32,240} % Purple
+\definecolor{matlab-background}{RGB}{245,245,245} % Whitish background
+
+% Define custom MATLAB style
+\lstdefinestyle{matlab}{
+    language=Matlab,
+    backgroundcolor=\color{matlab-background},
+    commentstyle=\color{matlab-comment},
+    keywordstyle=\color{matlab-keyword},
+    numberstyle=\tiny\color{vscode-yellow},
+    stringstyle=\color{matlab-string},
+    basicstyle=\ttfamily\small,
+    breakatwhitespace=false,
+    breaklines=true,
+    captionpos=b,
+    keepspaces=true,
+    showspaces=false,
+    showstringspaces=false,
+    showtabs=false,
+    tabsize=4,
+    extendedchars=true,
+    inputencoding=utf8,
+    frame=tb,
+    framerule=1pt,
+    numbersep=5pt,
+    numbers=left,
+    stepnumber=1,  % Display every line number
+    firstnumber=1   % Specify the starting line number
+}
+
+\lstset{style=matlab}
+
+\begin{adjustwidth}{-0.5cm}{-0.5cm}
+\begin{lstlisting}{language=Python}
+function CallPythonScript(app, filePath)
+    %Specify the full path to Anaconda Python executable
+    anacondaPythonExecutable = 'C:\Users\......\python.exe';
+    pythonScript = 'C:\Users\.......\outer_inner_wires.py';
+    outputFile = 'output.mat';
+    %Check if Anaconda Python executable exists
+    if exist(anacondaPythonExecutable, 'file') == 2
+        %Build the command
+        command = sprintf('%s "%s" "%s"', anacondaPythonExecutable, pythonScript, filePath);
+        %Call Python script
+        [status, ~] = system(command, '-echo');
+        if status == 0
+            data = load(outputFile);
+            dict_=data.dict_list;
+            app.dict_list=dict_;        % to store original geometry
+            app.change_dict_list=dict_;     % to store changed geometry
+            app.deg_dict_list=dict_;        % to store degree refined geometry
+            num_patches=numel(dict_);
+            app.dim=data.dimension;
+            app.num_patch=num_patches;
+            app.updateLabelDropDown();  % Dropdown should have as many labels as the number of patches
+            if app.dim==2
+                num_points_poly=size(app.change_dict_list{1}.outer_wire.outer_Trim_Polygon,1);
+                app.outer_poly=zeros(num_points_poly,2,num_patches);
+                for i=1:num_patches
+                    app.outer_poly(:,:,i)=app.change_dict_list{i}.outer_wire.outer_Trim_Polygon;
+                end
+            end
+        else
+            disp('File Not Found');
+        end
+    else
+        disp('Anaconda Python executable not found. Please check the path.');
+    end
+    outCom=evalc('disp("Python called Successfully")');
+    app.updateCommandHistory(outCom);
+    app.begin=0;
+    app.updatePlot;
+end
+
+\end{lstlisting}
+\end{adjustwidth}
